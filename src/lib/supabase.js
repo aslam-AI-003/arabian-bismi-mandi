@@ -35,17 +35,47 @@ export const getCategories = async () => {
 }
 
 // Menu Items
-export const getMenuItems = async (categoryId = null) => {
+export const getMenuItems = async (categoryId = null, includeUnavailable = false) => {
   let query = supabase
     .from('menu_items')
     .select('*, categories(name, icon)')
-    .eq('is_available', true)
+  
+  if (!includeUnavailable) {
+    query = query.eq('is_available', true)
+  }
   
   if (categoryId) {
     query = query.eq('category_id', categoryId)
   }
   
   const { data, error } = await query.order('name')
+  return { data, error }
+}
+
+export const createMenuItem = async (itemData) => {
+  const { data, error } = await supabase
+    .from('menu_items')
+    .insert([itemData])
+    .select()
+    .single()
+  return { data, error }
+}
+
+export const updateMenuItem = async (id, itemData) => {
+  const { data, error } = await supabase
+    .from('menu_items')
+    .update({ ...itemData, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single()
+  return { data, error }
+}
+
+export const deleteMenuItem = async (id) => {
+  const { data, error } = await supabase
+    .from('menu_items')
+    .delete()
+    .eq('id', id)
   return { data, error }
 }
 
@@ -139,6 +169,27 @@ export const getDailySales = async (date) => {
     .gte('created_at', startOfDay.toISOString())
     .lte('created_at', endOfDay.toISOString())
     .neq('order_status', 'CANCELLED')
+  
+  return { data, error }
+}
+
+export const getOrdersByDateRange = async (startDate, endDate) => {
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*, order_items(*)')
+    .gte('created_at', startDate)
+    .lte('created_at', endDate)
+    .order('created_at', { ascending: false })
+  
+  return { data, error }
+}
+
+export const getActiveOrders = async () => {
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*, order_items(*)')
+    .in('order_status', ['PENDING', 'PREPARING', 'READY'])
+    .order('created_at', { ascending: true })
   
   return { data, error }
 }
