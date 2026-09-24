@@ -29,12 +29,16 @@ export default function Menu() {
 
   const fetchData = async () => {
     setLoading(true)
-    const [catResult, menuResult] = await Promise.all([
-      getCategories(),
-      getMenuItems()
-    ])
-    if (catResult.data) setCategories(catResult.data)
-    if (menuResult.data) setMenuItems(menuResult.data)
+    try {
+      const [catResult, menuResult] = await Promise.all([
+        getCategories(),
+        getMenuItems(null, true) // Include unavailable items for management
+      ])
+      if (catResult.data) setCategories(catResult.data)
+      if (menuResult.data) setMenuItems(menuResult.data)
+    } catch (error) {
+      console.error('Error fetching menu data:', error)
+    }
     setLoading(false)
   }
 
