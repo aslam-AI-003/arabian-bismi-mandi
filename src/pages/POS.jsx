@@ -3,6 +3,7 @@ import { Search, Plus, Minus, Trash2, UtensilsCrossed, Package, Truck, Loader2 }
 import { useCart } from '../context/CartContext'
 import { getCategories, getMenuItems, createOrder, createOrderItems } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { useLanguage } from '../context/LanguageContext'
 
 export default function POS() {
   const [categories, setCategories] = useState([])
@@ -12,6 +13,7 @@ export default function POS() {
   const [loading, setLoading] = useState(true)
   const [placingOrder, setPlacingOrder] = useState(false)
   const cart = useCart()
+  const { t } = useLanguage()
 
   // Fetch categories and menu items on mount
   useEffect(() => {
@@ -146,7 +148,7 @@ export default function POS() {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={18} />
           <input
             type="text"
-            placeholder="Search menu items..."
+            placeholder={t('searchMenu')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="input-search pl-11"
@@ -175,7 +177,7 @@ export default function POS() {
         <div className="flex-1 overflow-y-auto">
           {filteredItems.length === 0 ? (
             <div className="text-center py-12 text-muted">
-              <p>No items found</p>
+              <p>{t('noItemsFound')}</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -207,13 +209,13 @@ export default function POS() {
       <div className="w-full lg:w-[380px] xl:w-[420px] flex flex-col card shrink-0">
         {/* Order Type */}
         <div className="mb-4">
-          <p className="text-muted text-sm mb-2">Order Type</p>
+          <p className="text-muted text-sm mb-2">{t('orderType')}</p>
           <div className="grid grid-cols-3 gap-2">
             {[
-              { value: 'DINE_IN', icon: UtensilsCrossed, label: 'Dine In' },
-              { value: 'TAKEAWAY', icon: Package, label: 'Takeaway' },
-              { value: 'DELIVERY', icon: Truck, label: 'Delivery' },
-            ].map(({ value, icon: Icon, label }) => (
+              { value: 'DINE_IN', icon: UtensilsCrossed, labelKey: 'dineIn' },
+              { value: 'TAKEAWAY', icon: Package, labelKey: 'takeaway' },
+              { value: 'DELIVERY', icon: Truck, labelKey: 'delivery' },
+            ].map(({ value, icon: Icon, labelKey }) => (
               <button
                 key={value}
                 onClick={() => cart.setOrderType(value)}
@@ -224,7 +226,7 @@ export default function POS() {
                 }`}
               >
                 <Icon size={18} />
-                <span className="text-[10px] font-medium whitespace-nowrap">{label}</span>
+                <span className="text-[10px] font-medium whitespace-nowrap">{t(labelKey)}</span>
               </button>
             ))}
           </div>
@@ -233,13 +235,13 @@ export default function POS() {
         {/* Table Number (Dine In) */}
         {cart.orderType === 'DINE_IN' && (
           <div className="mb-4">
-            <label className="text-muted text-sm mb-2 block">Table Number *</label>
+            <label className="text-muted text-sm mb-2 block">{t('tableNumber')} *</label>
             <input
               type="number"
               value={cart.tableNumber}
               onChange={(e) => cart.setTableNumber(e.target.value)}
               className="input"
-              placeholder="Enter table number"
+              placeholder={t('enterTableNumber')}
             />
           </div>
         )}
@@ -248,7 +250,7 @@ export default function POS() {
         {cart.orderType === 'DELIVERY' && (
           <div className="mb-4 space-y-3">
             <div>
-              <label className="text-muted text-sm mb-1 block">Customer Name</label>
+              <label className="text-muted text-sm mb-1 block">{t('customerName')}</label>
               <input
                 type="text"
                 value={cart.customerName}
@@ -258,23 +260,23 @@ export default function POS() {
               />
             </div>
             <div>
-              <label className="text-muted text-sm mb-1 block">Phone Number</label>
+              <label className="text-muted text-sm mb-1 block">{t('phoneNumber')}</label>
               <input
                 type="tel"
                 value={cart.customerPhone}
                 onChange={(e) => cart.setCustomerPhone(e.target.value)}
                 className="input"
-                placeholder="Phone number"
+                placeholder={t('phoneNumber')}
               />
             </div>
             <div>
-              <label className="text-muted text-sm mb-1 block">Address</label>
+              <label className="text-muted text-sm mb-1 block">{t('address')}</label>
               <textarea
                 value={cart.customerAddress}
                 onChange={(e) => cart.setCustomerAddress(e.target.value)}
                 className="input"
                 rows={2}
-                placeholder="Delivery address"
+                placeholder={t('deliveryAddress')}
               />
             </div>
           </div>
@@ -282,11 +284,11 @@ export default function POS() {
 
         {/* Cart Items */}
         <div className="flex-1 overflow-y-auto mb-4">
-          <h3 className="text-cream font-semibold mb-3">Cart Items ({cart.itemCount})</h3>
+          <h3 className="text-cream font-semibold mb-3">{t('cartItems')} ({cart.itemCount})</h3>
           {cart.items.length === 0 ? (
             <div className="text-center py-8 text-muted">
-              <p>Cart is empty</p>
-              <p className="text-sm">Click on items to add</p>
+              <p>{t('cartEmpty')}</p>
+              <p className="text-sm">{t('clickToAdd')}</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -339,21 +341,21 @@ export default function POS() {
         {/* Totals */}
         <div className="border-t border-brand-gold/20 pt-4 space-y-2">
           <div className="flex justify-between text-muted">
-            <span>Subtotal</span>
+            <span>{t('subtotal')}</span>
             <span className="font-mono">₹{cart.subtotal.toFixed(2)}</span>
           </div>
           {cart.discountAmount > 0 && (
             <div className="flex justify-between text-green-400">
-              <span>Discount</span>
+              <span>{t('discount')}</span>
               <span className="font-mono">-₹{cart.discountAmount.toFixed(2)}</span>
             </div>
           )}
           <div className="flex justify-between text-muted">
-            <span>GST ({cart.taxPercentage}%)</span>
+            <span>{t('gst')} ({cart.taxPercentage}%)</span>
             <span className="font-mono">₹{cart.taxAmount.toFixed(2)}</span>
           </div>
           <div className="flex justify-between text-cream text-lg font-semibold pt-2 border-t border-brand-gold/20">
-            <span>Total</span>
+            <span>{t('total')}</span>
             <span className="font-mono text-brand-gold">₹{cart.total.toFixed(2)}</span>
           </div>
         </div>
@@ -381,7 +383,7 @@ export default function POS() {
             className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {placingOrder && <Loader2 className="animate-spin" size={20} />}
-            {placingOrder ? 'Placing Order...' : 'Place Order'}
+            {placingOrder ? t('placingOrder') : t('placeOrder')}
           </button>
         </div>
       </div>
