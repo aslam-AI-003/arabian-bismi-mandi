@@ -10,7 +10,8 @@ import {
   Menu,
   X,
   ChefHat,
-  Languages
+  Languages,
+  Calculator
 } from 'lucide-react'
 import { useState } from 'react'
 import { format } from 'date-fns'
@@ -28,6 +29,7 @@ export default function Layout() {
     { path: '/pos', icon: ShoppingCart, labelKey: 'pos' },
     { path: '/orders', icon: ClipboardList, labelKey: 'orders' },
     { path: '/reports', icon: BarChart3, labelKey: 'reports' },
+    { path: '/settlement', icon: Calculator, labelKey: 'settlement' },
     { path: '/menu', icon: UtensilsCrossed, labelKey: 'menu' },
     { path: '/kitchen', icon: ChefHat, labelKey: 'kitchen' },
     { path: '/settings', icon: Settings, labelKey: 'settings' },

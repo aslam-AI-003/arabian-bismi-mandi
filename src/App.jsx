@@ -8,6 +8,7 @@ import Menu from './pages/Menu'
 import Reports from './pages/Reports'
 import Settings from './pages/Settings'
 import Kitchen from './pages/Kitchen'
+import DayEndSettlement from './pages/DayEndSettlement'
 import Login from './pages/Login'
 import { AuthProvider } from './context/AuthContext'
 import { CartProvider } from './context/CartContext'
@@ -53,6 +54,7 @@ function App() {
               <Route path="reports" element={<Reports />} />
               <Route path="settings" element={<Settings />} />
               <Route path="kitchen" element={<Kitchen />} />
+              <Route path="settlement" element={<DayEndSettlement />} />
             </Route>
           </Routes>
           </BrowserRouter>

@@ -9,6 +9,7 @@ const translations = {
     reports: 'Reports',
     menu: 'Menu',
     kitchen: 'Kitchen',
+    settlement: 'Day End',
     settings: 'Settings',
     logout: 'Logout',
     
@@ -133,6 +134,7 @@ const translations = {
     reports: 'அறிக்கைகள்',
     menu: 'மெனு',
     kitchen: 'சமையலறை',
+    settlement: 'நாள் முடிவு',
     settings: 'அமைப்புகள்',
     logout: 'வெளியேறு',
     
