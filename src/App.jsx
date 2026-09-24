@@ -11,12 +11,14 @@ import Kitchen from './pages/Kitchen'
 import Login from './pages/Login'
 import { AuthProvider } from './context/AuthContext'
 import { CartProvider } from './context/CartContext'
+import { LanguageProvider } from './context/LanguageContext'
 
 function App() {
   return (
-    <AuthProvider>
-      <CartProvider>
-        <BrowserRouter>
+    <LanguageProvider>
+      <AuthProvider>
+        <CartProvider>
+          <BrowserRouter>
           <Toaster 
             position="top-right"
             toastOptions={{
@@ -53,9 +55,10 @@ function App() {
               <Route path="kitchen" element={<Kitchen />} />
             </Route>
           </Routes>
-        </BrowserRouter>
-      </CartProvider>
-    </AuthProvider>
+          </BrowserRouter>
+        </CartProvider>
+      </AuthProvider>
+    </LanguageProvider>
   )
 }
 

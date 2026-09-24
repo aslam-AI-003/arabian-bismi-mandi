@@ -8,23 +8,28 @@ import {
   Settings,
   LogOut,
   Menu,
-  X
+  X,
+  ChefHat,
+  Languages
 } from 'lucide-react'
 import { useState } from 'react'
 import { format } from 'date-fns'
-
-const navItems = [
-  { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { path: '/pos', icon: ShoppingCart, label: 'POS' },
-  { path: '/orders', icon: ClipboardList, label: 'Orders' },
-  { path: '/reports', icon: BarChart3, label: 'Reports' },
-  { path: '/menu', icon: UtensilsCrossed, label: 'Menu' },
-  { path: '/settings', icon: Settings, label: 'Settings' },
-]
+import { useLanguage } from '../context/LanguageContext'
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
+  const { language, toggleLanguage, t } = useLanguage()
+
+  const navItems = [
+    { path: '/dashboard', icon: LayoutDashboard, labelKey: 'dashboard' },
+    { path: '/pos', icon: ShoppingCart, labelKey: 'pos' },
+    { path: '/orders', icon: ClipboardList, labelKey: 'orders' },
+    { path: '/reports', icon: BarChart3, labelKey: 'reports' },
+    { path: '/menu', icon: UtensilsCrossed, labelKey: 'menu' },
+    { path: '/kitchen', icon: ChefHat, labelKey: 'kitchen' },
+    { path: '/settings', icon: Settings, labelKey: 'settings' },
+  ]
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-dark-primary via-dark-secondary to-dark-tertiary">
@@ -38,7 +43,14 @@ export default function Layout() {
             <Menu size={24} />
           </button>
           <h1 className="text-brand-gold font-decorative text-lg">Arabian Bismi</h1>
-          <div className="w-10" />
+          {/* Mobile Language Toggle */}
+          <button 
+            onClick={toggleLanguage}
+            className="p-2 text-cream hover:text-brand-gold flex items-center gap-1"
+          >
+            <Languages size={18} />
+            <span className="text-xs font-medium">{language === 'en' ? 'த' : 'En'}</span>
+          </button>
         </div>
       </header>
 
@@ -79,7 +91,7 @@ export default function Layout() {
 
         {/* Navigation */}
         <nav className="p-4 space-y-2">
-          {navItems.map(({ path, icon: Icon, label }) => (
+          {navItems.map(({ path, icon: Icon, labelKey }) => (
             <NavLink
               key={path}
               to={path}
@@ -90,7 +102,7 @@ export default function Layout() {
               `}
             >
               <Icon size={20} />
-              <span>{label}</span>
+              <span>{t(labelKey)}</span>
             </NavLink>
           ))}
         </nav>
@@ -99,7 +111,7 @@ export default function Layout() {
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-brand-gold/20">
           <button className="nav-link w-full text-red-400 hover:text-red-300 hover:bg-red-500/10">
             <LogOut size={20} />
-            <span>Logout</span>
+            <span>{t('logout')}</span>
           </button>
         </div>
       </aside>
@@ -109,9 +121,19 @@ export default function Layout() {
         {/* Desktop Header */}
         <header className="hidden lg:flex items-center justify-between px-6 py-4 border-b border-brand-gold/20 bg-dark-primary/50 backdrop-blur sticky top-0 z-40">
           <h2 className="text-xl font-semibold text-cream capitalize">
-            {location.pathname.replace('/', '') || 'Dashboard'}
+            {t(location.pathname.replace('/', '') || 'dashboard')}
           </h2>
           <div className="flex items-center gap-4">
+            {/* Language Toggle Button */}
+            <button 
+              onClick={toggleLanguage}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-brand-gold/30 hover:border-brand-gold/60 hover:bg-brand-gold/10 transition-all"
+            >
+              <Languages size={16} className="text-brand-gold" />
+              <span className="text-cream text-sm font-medium">
+                {language === 'en' ? 'தமிழ்' : 'English'}
+              </span>
+            </button>
             <span className="text-muted text-sm">
               {format(new Date(), 'EEEE, dd MMM yyyy')}
             </span>
