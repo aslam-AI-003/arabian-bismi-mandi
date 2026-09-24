@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { 
   Clock, CheckCircle2, XCircle, ChefHat, Truck, 
-  UtensilsCrossed, Package, Loader2, RefreshCw, Eye
+  UtensilsCrossed, Package, Loader2, RefreshCw, Receipt
 } from 'lucide-react'
 import { getOrders, updateOrderStatus, subscribeToOrders, supabase } from '../lib/supabase'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
 import { useLanguage } from '../context/LanguageContext'
+import ReceiptModal from '../components/ReceiptModal'
 
 const statusConfig = {
   PENDING: { label: 'Pending', icon: Clock, color: 'badge-pending', next: 'PREPARING' },
@@ -27,7 +28,8 @@ export default function Orders() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [selectedOrder, setSelectedOrder] = useState(null)
-  const { t } = useLanguage()
+  const [showReceiptModal, setShowReceiptModal] = useState(false)
+  const { t, language } = useLanguage()
 
   useEffect(() => {
     fetchOrders()
@@ -65,6 +67,11 @@ export default function Orders() {
     }
   }
 
+  const handleViewReceipt = (order) => {
+    setSelectedOrder(order)
+    setShowReceiptModal(true)
+  }
+
   const filteredOrders = orders.filter(order => {
     if (filter === 'all') return true
     return order.order_status === filter
@@ -78,12 +85,27 @@ export default function Orders() {
     COMPLETED: orders.filter(o => o.order_status === 'COMPLETED').length,
   }
 
+  // Translations
+  const statusLabels = {
+    PENDING: language === 'ta' ? 'நிலுவையில்' : 'Pending',
+    PREPARING: language === 'ta' ? 'தயாரிக்கிறது' : 'Preparing',
+    READY: language === 'ta' ? 'தயார்' : 'Ready',
+    COMPLETED: language === 'ta' ? 'முடிந்தது' : 'Completed',
+    CANCELLED: language === 'ta' ? 'ரத்து' : 'Cancelled',
+  }
+
+  const typeLabels = {
+    DINE_IN: language === 'ta' ? 'இங்கே சாப்பிட' : 'Dine In',
+    TAKEAWAY: language === 'ta' ? 'பார்சல்' : 'Takeaway',
+    DELIVERY: language === 'ta' ? 'டெலிவரி' : 'Delivery',
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <div className="text-center">
           <Loader2 className="w-12 h-12 animate-spin text-brand-gold mx-auto mb-4" />
-          <p className="text-muted">Loading orders...</p>
+          <p className="text-muted">{language === 'ta' ? 'ஆர்டர்கள் ஏற்றுகிறது...' : 'Loading orders...'}</p>
         </div>
       </div>
     )
@@ -152,7 +174,7 @@ export default function Orders() {
                   </div>
                   <span className={`badge ${status?.color}`}>
                     <StatusIcon size={14} className="mr-1" />
-                    {status?.label}
+                    {statusLabels[order.order_status]}
                   </span>
                 </div>
 
@@ -160,10 +182,12 @@ export default function Orders() {
                 <div className="flex items-center gap-3 mb-4">
                   <span className={`badge ${type?.color}`}>
                     <TypeIcon size={14} className="mr-1" />
-                    {type?.label}
+                    {typeLabels[order.order_type]}
                   </span>
                   {order.table_number && (
-                    <span className="text-muted text-sm">Table {order.table_number}</span>
+                    <span className="text-muted text-sm">
+                      {language === 'ta' ? 'டேபிள்' : 'Table'} {order.table_number}
+                    </span>
                   )}
                 </div>
 
@@ -176,13 +200,15 @@ export default function Orders() {
                     </div>
                   ))}
                   {order.order_items?.length > 3 && (
-                    <p className="text-muted text-xs">+{order.order_items.length - 3} more items</p>
+                    <p className="text-muted text-xs">
+                      +{order.order_items.length - 3} {language === 'ta' ? 'மேலும் பொருட்கள்' : 'more items'}
+                    </p>
                   )}
                 </div>
 
                 {/* Total */}
                 <div className="flex justify-between items-center pt-3 border-t border-brand-gold/20">
-                  <span className="text-muted">Total</span>
+                  <span className="text-muted">{language === 'ta' ? 'மொத்தம்' : 'Total'}</span>
                   <span className="text-brand-gold font-mono font-bold text-lg">
                     ₹{parseFloat(order.total_amount).toFixed(2)}
                   </span>
@@ -190,18 +216,31 @@ export default function Orders() {
 
                 {/* Actions */}
                 <div className="flex gap-2 mt-4">
+                  {/* View Receipt Button */}
+                  <button
+                    onClick={() => handleViewReceipt(order)}
+                    className="p-2 rounded-lg bg-brand-gold/20 text-brand-gold hover:bg-brand-gold/30 transition-all"
+                    title={language === 'ta' ? 'ரசீது பார்' : 'View Receipt'}
+                  >
+                    <Receipt size={18} />
+                  </button>
+                  
                   {status?.next && order.order_status !== 'CANCELLED' && (
                     <button
                       onClick={() => handleStatusUpdate(order.id, status.next)}
                       className="btn-primary flex-1 text-sm py-2"
                     >
-                      Mark as {statusConfig[status.next]?.label}
+                      {language === 'ta' 
+                        ? `${statusLabels[status.next]} ஆக்கு`
+                        : `Mark as ${statusLabels[status.next]}`
+                      }
                     </button>
                   )}
                   {order.order_status === 'PENDING' && (
                     <button
                       onClick={() => handleStatusUpdate(order.id, 'CANCELLED')}
                       className="px-3 py-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
+                      title={language === 'ta' ? 'ரத்து செய்' : 'Cancel'}
                     >
                       <XCircle size={18} />
                     </button>
@@ -211,6 +250,17 @@ export default function Orders() {
             )
           })}
         </div>
+      )}
+
+      {/* Receipt Modal */}
+      {showReceiptModal && selectedOrder && (
+        <ReceiptModal 
+          order={selectedOrder} 
+          onClose={() => {
+            setShowReceiptModal(false)
+            setSelectedOrder(null)
+          }}
+        />
       )}
     </div>
   )
