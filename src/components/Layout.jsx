@@ -15,6 +15,8 @@ import {
 import { useState } from 'react'
 import { format } from 'date-fns'
 import { useLanguage } from '../context/LanguageContext'
+// Import the logo
+import bismiLogo from '../assets/Bismi_Logo.jpg'
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -32,7 +34,29 @@ export default function Layout() {
   ]
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-dark-primary via-dark-secondary to-dark-tertiary">
+    <div className="min-h-screen bg-gradient-to-b from-dark-primary via-dark-secondary to-dark-tertiary relative">
+      {/* Watermark Background */}
+      <div 
+        className="fixed inset-0 z-0 pointer-events-none opacity-[0.03]"
+        style={{
+          backgroundImage: `url(${bismiLogo})`,
+          backgroundSize: '200px 200px',
+          backgroundRepeat: 'repeat',
+          backgroundPosition: 'center',
+        }}
+      />
+      
+      {/* Alternative: Single centered watermark */}
+      <div 
+        className="fixed inset-0 z-0 pointer-events-none flex items-center justify-center opacity-[0.04]"
+      >
+        <img 
+          src={bismiLogo} 
+          alt="" 
+          className="w-[400px] h-[400px] object-contain"
+        />
+      </div>
+
       {/* Mobile Header */}
       <header className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-dark-primary/95 backdrop-blur border-b border-brand-gold/20 px-4 py-3">
         <div className="flex items-center justify-between">
@@ -42,7 +66,14 @@ export default function Layout() {
           >
             <Menu size={24} />
           </button>
-          <h1 className="text-brand-gold font-decorative text-lg">Arabian Bismi</h1>
+          <div className="flex items-center gap-2">
+            <img 
+              src={bismiLogo} 
+              alt="Bismi Logo" 
+              className="w-8 h-8 rounded-full object-cover border border-brand-gold/50"
+            />
+            <h1 className="text-brand-gold font-decorative text-lg">Arabian Bismi</h1>
+          </div>
           {/* Mobile Language Toggle */}
           <button 
             onClick={toggleLanguage}
@@ -79,9 +110,11 @@ export default function Layout() {
             <X size={20} />
           </button>
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full border-2 border-brand-gold bg-gradient-to-br from-dark-secondary to-dark-primary flex items-center justify-center shadow-glow">
-              <span className="text-2xl">🍽️</span>
-            </div>
+            <img 
+              src={bismiLogo} 
+              alt="Bismi Logo" 
+              className="w-12 h-12 rounded-full object-cover border-2 border-brand-gold shadow-glow"
+            />
             <div>
               <h1 className="text-brand-gold font-decorative text-lg leading-tight">Arabian Bismi</h1>
               <p className="text-muted text-xs">Mandi Restaurant</p>
@@ -117,7 +150,7 @@ export default function Layout() {
       </aside>
 
       {/* Main Content */}
-      <main className="lg:ml-64 min-h-screen">
+      <main className="lg:ml-64 min-h-screen relative z-10">
         {/* Desktop Header */}
         <header className="hidden lg:flex items-center justify-between px-6 py-4 border-b border-brand-gold/20 bg-dark-primary/50 backdrop-blur sticky top-0 z-40">
           <h2 className="text-xl font-semibold text-cream capitalize">
@@ -140,6 +173,12 @@ export default function Layout() {
             <span className="text-brand-gold font-mono">
               {format(new Date(), 'hh:mm a')}
             </span>
+            {/* Logo in header - top right */}
+            <img 
+              src={bismiLogo} 
+              alt="Bismi Logo" 
+              className="w-10 h-10 rounded-full object-cover border-2 border-brand-gold shadow-glow"
+            />
           </div>
         </header>
 
