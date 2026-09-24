@@ -6,6 +6,7 @@ import {
 import { getOrders, updateOrderStatus, subscribeToOrders, supabase } from '../lib/supabase'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
+import { useLanguage } from '../context/LanguageContext'
 
 const statusConfig = {
   PENDING: { label: 'Pending', icon: Clock, color: 'badge-pending', next: 'PREPARING' },
@@ -26,6 +27,7 @@ export default function Orders() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [selectedOrder, setSelectedOrder] = useState(null)
+  const { t } = useLanguage()
 
   useEffect(() => {
     fetchOrders()
@@ -91,25 +93,25 @@ export default function Orders() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-cream">Orders</h1>
+        <h1 className="text-2xl font-semibold text-cream">{t('orders')}</h1>
         <button 
           onClick={fetchOrders}
           className="btn-outline flex items-center gap-2"
         >
           <RefreshCw size={18} />
-          Refresh
+          {t('refresh')}
         </button>
       </div>
 
       {/* Filter Tabs */}
       <div className="flex gap-2 overflow-x-auto pb-2">
         {[
-          { key: 'all', label: 'All' },
-          { key: 'PENDING', label: 'Pending' },
-          { key: 'PREPARING', label: 'Preparing' },
-          { key: 'READY', label: 'Ready' },
-          { key: 'COMPLETED', label: 'Completed' },
-        ].map(({ key, label }) => (
+          { key: 'all', labelKey: 'allOrders' },
+          { key: 'PENDING', labelKey: 'pending' },
+          { key: 'PREPARING', labelKey: 'preparing' },
+          { key: 'READY', labelKey: 'ready' },
+          { key: 'COMPLETED', labelKey: 'completed' },
+        ].map(({ key, labelKey }) => (
           <button
             key={key}
             onClick={() => setFilter(key)}
@@ -119,7 +121,7 @@ export default function Orders() {
                 : 'bg-dark-secondary/50 text-cream hover:bg-dark-secondary'
             }`}
           >
-            {label} ({orderCounts[key] || 0})
+            {t(labelKey)} ({orderCounts[key] || 0})
           </button>
         ))}
       </div>
@@ -127,8 +129,8 @@ export default function Orders() {
       {/* Orders Grid */}
       {filteredOrders.length === 0 ? (
         <div className="card p-12 text-center">
-          <p className="text-cream text-lg">No orders found</p>
-          <p className="text-muted mt-2">Orders will appear here when placed from POS</p>
+          <p className="text-cream text-lg">{t('noOrdersFound')}</p>
+          <p className="text-muted mt-2">{t('ordersAppearHere')}</p>
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
