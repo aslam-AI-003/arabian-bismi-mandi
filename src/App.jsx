@@ -7,6 +7,7 @@ import Orders from './pages/Orders'
 import Menu from './pages/Menu'
 import Reports from './pages/Reports'
 import Settings from './pages/Settings'
+import Kitchen from './pages/Kitchen'
 import Login from './pages/Login'
 import { AuthProvider } from './context/AuthContext'
 import { CartProvider } from './context/CartContext'
@@ -49,6 +50,7 @@ function App() {
               <Route path="menu" element={<Menu />} />
               <Route path="reports" element={<Reports />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="kitchen" element={<Kitchen />} />
             </Route>
           </Routes>
         </BrowserRouter>
