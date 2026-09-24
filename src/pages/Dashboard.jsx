@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { TrendingUp, ShoppingBag, Clock, IndianRupee, Loader2 } from 'lucide-react'
 import { getTodayOrders, supabase } from '../lib/supabase'
 import { format } from 'date-fns'
+import { useLanguage } from '../context/LanguageContext'
 
 const statusColors = {
   PENDING: 'badge-pending',
@@ -24,6 +25,7 @@ export default function Dashboard() {
   const [avgOrder, setAvgOrder] = useState(0)
   const [recentOrders, setRecentOrders] = useState([])
   const [topItems, setTopItems] = useState([])
+  const { t, language } = useLanguage()
 
   useEffect(() => {
     fetchDashboardData()
@@ -70,22 +72,35 @@ export default function Dashboard() {
     setLoading(false)
   }
 
+  const statusTranslations = {
+    PENDING: language === 'ta' ? 'நிலுவையில்' : 'Pending',
+    PREPARING: language === 'ta' ? 'தயாரிக்கிறது' : 'Preparing',
+    READY: language === 'ta' ? 'தயார்' : 'Ready',
+    COMPLETED: language === 'ta' ? 'முடிந்தது' : 'Completed',
+  }
+
+  const typeTranslations = {
+    DINE_IN: language === 'ta' ? 'இங்கே சாப்பிட' : 'Dine In',
+    TAKEAWAY: language === 'ta' ? 'பார்சல்' : 'Takeaway',
+    DELIVERY: language === 'ta' ? 'டெலிவரி' : 'Delivery',
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <div className="text-center">
           <Loader2 className="w-12 h-12 animate-spin text-brand-gold mx-auto mb-4" />
-          <p className="text-muted">Loading dashboard...</p>
+          <p className="text-muted">{t('loading')}</p>
         </div>
       </div>
     )
   }
 
   const statsData = [
-    { label: "Today's Sales", value: `₹${todaySales.toLocaleString('en-IN')}`, icon: IndianRupee, color: "text-green-400" },
-    { label: "Total Orders", value: totalOrders.toString(), icon: ShoppingBag, color: "text-green-400" },
-    { label: "Active Orders", value: pendingOrders.toString(), icon: Clock, color: "text-yellow-400" },
-    { label: "Avg Order", value: `₹${avgOrder.toFixed(0)}`, icon: TrendingUp, color: "text-green-400" },
+    { label: t('todaysSales'), value: `₹${todaySales.toLocaleString('en-IN')}`, icon: IndianRupee, color: "text-green-400" },
+    { label: t('totalOrders'), value: totalOrders.toString(), icon: ShoppingBag, color: "text-green-400" },
+    { label: t('activeOrders'), value: pendingOrders.toString(), icon: Clock, color: "text-yellow-400" },
+    { label: t('avgOrder'), value: `₹${avgOrder.toFixed(0)}`, icon: TrendingUp, color: "text-green-400" },
   ]
 
   return (
@@ -110,11 +125,11 @@ export default function Dashboard() {
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Recent Orders */}
         <div className="lg:col-span-2 card">
-          <h3 className="text-lg font-semibold text-cream mb-4">Recent Orders</h3>
+          <h3 className="text-lg font-semibold text-cream mb-4">{t('recentOrders')}</h3>
           {recentOrders.length === 0 ? (
             <div className="text-center py-8 text-muted">
-              <p>No orders yet today</p>
-              <p className="text-sm">Orders will appear here</p>
+              <p>{t('noOrdersYet')}</p>
+              <p className="text-sm">{t('ordersAppearHere')}</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -128,14 +143,16 @@ export default function Dashboard() {
                     <div>
                       <p className="text-cream font-medium">{order.order_number}</p>
                       <p className="text-muted text-sm">
-                        {order.order_type === 'DINE_IN' ? `Table ${order.table_number}` : order.order_type.replace('_', ' ')}
+                        {order.order_type === 'DINE_IN' 
+                          ? `${t('table')} ${order.table_number}` 
+                          : typeTranslations[order.order_type]}
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
                     <p className="text-brand-gold font-mono font-semibold">₹{parseFloat(order.total_amount).toFixed(0)}</p>
                     <span className={`badge ${statusColors[order.order_status]}`}>
-                      {order.order_status}
+                      {statusTranslations[order.order_status]}
                     </span>
                   </div>
                 </div>
@@ -146,10 +163,10 @@ export default function Dashboard() {
 
         {/* Top Selling */}
         <div className="card">
-          <h3 className="text-lg font-semibold text-cream mb-4">🔥 Top Selling Today</h3>
+          <h3 className="text-lg font-semibold text-cream mb-4">🔥 {t('topSelling')}</h3>
           {topItems.length === 0 ? (
             <div className="text-center py-8 text-muted">
-              <p>No items sold yet</p>
+              <p>{t('noData')}</p>
             </div>
           ) : (
             <div className="space-y-3">

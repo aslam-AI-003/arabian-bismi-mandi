@@ -3,10 +3,12 @@ import { Clock, CheckCircle2, ChefHat, Bell, Loader2 } from 'lucide-react'
 import { getActiveOrders, updateOrderStatus, subscribeToOrders, supabase } from '../lib/supabase'
 import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
+import { useLanguage } from '../context/LanguageContext'
 
 export default function Kitchen() {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
+  const { t, language } = useLanguage()
 
   useEffect(() => {
     fetchOrders()
@@ -29,7 +31,7 @@ export default function Kitchen() {
   const fetchOrders = async () => {
     const { data, error } = await getActiveOrders()
     if (error) {
-      toast.error('Failed to load orders')
+      toast.error(t('failedToLoad'))
     } else {
       setOrders(data || [])
     }
@@ -54,12 +56,19 @@ export default function Kitchen() {
     }
   }
 
+  const statusTranslations = {
+    PENDING: language === 'ta' ? 'நிலுவையில்' : 'Pending',
+    PREPARING: language === 'ta' ? 'தயாரிக்கிறது' : 'Preparing',
+    READY: language === 'ta' ? 'தயார்' : 'Ready',
+    COMPLETED: language === 'ta' ? 'முடிந்தது' : 'Completed',
+  }
+
   const handleStatusUpdate = async (orderId, newStatus) => {
     const { error } = await updateOrderStatus(orderId, newStatus)
     if (error) {
-      toast.error('Failed to update')
+      toast.error(t('failedToLoad'))
     } else {
-      toast.success(`Marked as ${newStatus}`)
+      toast.success(`${statusTranslations[newStatus]}`)
       fetchOrders()
     }
   }
@@ -76,6 +85,12 @@ export default function Kitchen() {
     )
   }
 
+  const typeLabels = {
+    DINE_IN: language === 'ta' ? 'இங்கே சாப்பிட' : 'Dine In',
+    TAKEAWAY: language === 'ta' ? 'பார்சல்' : 'Takeaway',
+    DELIVERY: language === 'ta' ? 'டெலிவரி' : 'Delivery',
+  }
+
   const OrderCard = ({ order, onAction, actionLabel, actionColor = 'btn-primary' }) => (
     <div className="card bg-dark-secondary/80 border-2 border-brand-gold/30">
       {/* Header */}
@@ -83,8 +98,11 @@ export default function Kitchen() {
         <div>
           <p className="text-brand-gold font-mono font-bold text-lg">{order.order_number}</p>
           <p className="text-muted text-sm">
-            {order.order_type === 'DINE_IN' ? `🍽️ Table ${order.table_number}` : 
-             order.order_type === 'TAKEAWAY' ? '📦 Takeaway' : '🛵 Delivery'}
+            {order.order_type === 'DINE_IN' 
+              ? `🍽️ ${t('table')} ${order.table_number}` 
+              : order.order_type === 'TAKEAWAY' 
+                ? `📦 ${typeLabels.TAKEAWAY}` 
+                : `🛵 ${typeLabels.DELIVERY}`}
           </p>
         </div>
         <div className="text-right">
@@ -135,23 +153,23 @@ export default function Kitchen() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-cream flex items-center gap-2">
           <ChefHat className="text-brand-gold" />
-          Kitchen Display
+          {t('kitchenDisplay')}
         </h1>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-yellow-500/20 text-yellow-400">
             <Bell size={18} />
             <span className="font-bold">{pendingOrders.length}</span>
-            <span className="text-sm">New</span>
+            <span className="text-sm">{language === 'ta' ? 'புதிய' : 'New'}</span>
           </div>
           <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500/20 text-blue-400">
             <ChefHat size={18} />
             <span className="font-bold">{preparingOrders.length}</span>
-            <span className="text-sm">Cooking</span>
+            <span className="text-sm">{t('cooking')}</span>
           </div>
           <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-green-500/20 text-green-400">
             <CheckCircle2 size={18} />
             <span className="font-bold">{readyOrders.length}</span>
-            <span className="text-sm">Ready</span>
+            <span className="text-sm">{t('ready')}</span>
           </div>
         </div>
       </div>
@@ -162,7 +180,7 @@ export default function Kitchen() {
         <div className="flex flex-col">
           <div className="flex items-center gap-2 mb-4 px-4 py-3 rounded-lg bg-yellow-500/20 border border-yellow-500/30">
             <Bell className="text-yellow-400" />
-            <h2 className="text-yellow-400 font-bold text-lg">NEW ORDERS</h2>
+            <h2 className="text-yellow-400 font-bold text-lg">{t('newOrders')}</h2>
             <span className="ml-auto bg-yellow-500 text-dark-primary w-8 h-8 rounded-full flex items-center justify-center font-bold">
               {pendingOrders.length}
             </span>
@@ -171,7 +189,7 @@ export default function Kitchen() {
             {pendingOrders.length === 0 ? (
               <div className="text-center py-12 text-muted">
                 <Bell size={48} className="mx-auto mb-4 opacity-30" />
-                <p>No new orders</p>
+                <p>{t('noNewOrders')}</p>
               </div>
             ) : (
               pendingOrders.map(order => (
@@ -179,7 +197,7 @@ export default function Kitchen() {
                   key={order.id}
                   order={order}
                   onAction={(id) => handleStatusUpdate(id, 'PREPARING')}
-                  actionLabel="🍳 Start Preparing"
+                  actionLabel={`🍳 ${t('startPreparing')}`}
                   actionColor="bg-yellow-500 text-dark-primary hover:bg-yellow-400"
                 />
               ))
@@ -191,7 +209,7 @@ export default function Kitchen() {
         <div className="flex flex-col">
           <div className="flex items-center gap-2 mb-4 px-4 py-3 rounded-lg bg-blue-500/20 border border-blue-500/30">
             <ChefHat className="text-blue-400" />
-            <h2 className="text-blue-400 font-bold text-lg">PREPARING</h2>
+            <h2 className="text-blue-400 font-bold text-lg">{t('preparing')}</h2>
             <span className="ml-auto bg-blue-500 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold">
               {preparingOrders.length}
             </span>
@@ -200,7 +218,7 @@ export default function Kitchen() {
             {preparingOrders.length === 0 ? (
               <div className="text-center py-12 text-muted">
                 <ChefHat size={48} className="mx-auto mb-4 opacity-30" />
-                <p>Nothing cooking</p>
+                <p>{t('nothingCooking')}</p>
               </div>
             ) : (
               preparingOrders.map(order => (
@@ -208,7 +226,7 @@ export default function Kitchen() {
                   key={order.id}
                   order={order}
                   onAction={(id) => handleStatusUpdate(id, 'READY')}
-                  actionLabel="✅ Ready to Serve"
+                  actionLabel={`✅ ${t('readyToServe')}`}
                   actionColor="bg-blue-500 text-white hover:bg-blue-400"
                 />
               ))
@@ -220,7 +238,7 @@ export default function Kitchen() {
         <div className="flex flex-col">
           <div className="flex items-center gap-2 mb-4 px-4 py-3 rounded-lg bg-green-500/20 border border-green-500/30">
             <CheckCircle2 className="text-green-400" />
-            <h2 className="text-green-400 font-bold text-lg">READY</h2>
+            <h2 className="text-green-400 font-bold text-lg">{t('ready')}</h2>
             <span className="ml-auto bg-green-500 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold">
               {readyOrders.length}
             </span>
@@ -229,7 +247,7 @@ export default function Kitchen() {
             {readyOrders.length === 0 ? (
               <div className="text-center py-12 text-muted">
                 <CheckCircle2 size={48} className="mx-auto mb-4 opacity-30" />
-                <p>No ready orders</p>
+                <p>{t('noReadyOrders')}</p>
               </div>
             ) : (
               readyOrders.map(order => (
@@ -237,7 +255,7 @@ export default function Kitchen() {
                   key={order.id}
                   order={order}
                   onAction={(id) => handleStatusUpdate(id, 'COMPLETED')}
-                  actionLabel="🎉 Complete & Close"
+                  actionLabel={`🎉 ${t('completeClose')}`}
                   actionColor="bg-green-500 text-white hover:bg-green-400"
                 />
               ))
