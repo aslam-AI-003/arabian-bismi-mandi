@@ -13,7 +13,7 @@ export default function POS() {
   const [loading, setLoading] = useState(true)
   const [placingOrder, setPlacingOrder] = useState(false)
   const cart = useCart()
-  const { t } = useLanguage()
+  const { t, language } = useLanguage()
 
   // Fetch categories and menu items on mount
   useEffect(() => {
@@ -168,7 +168,7 @@ export default function POS() {
               }`}
             >
               <span>{cat.icon || '🍽️'}</span>
-              <span>{cat.name}</span>
+              <span>{language === 'ta' && cat.name_ta ? cat.name_ta : cat.name}</span>
             </button>
           ))}
         </div>
@@ -190,7 +190,9 @@ export default function POS() {
                   <div className="text-3xl mb-2">
                     {item.categories?.icon || '🍽️'}
                   </div>
-                  <h4 className="text-cream font-medium text-sm">{item.name}</h4>
+                  <h4 className="text-cream font-medium text-sm">
+                    {language === 'ta' && item.name_ta ? item.name_ta : item.name}
+                  </h4>
                   {item.variant && (
                     <p className="text-muted text-xs">{item.variant}</p>
                   )}
