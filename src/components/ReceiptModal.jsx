@@ -73,25 +73,89 @@ export default function ReceiptModal({ order, onClose, settings = {} }) {
         scale: 2,
         backgroundColor: '#ffffff',
         logging: false,
+        useCORS: true,
+        allowTaint: true,
+        foreignObjectRendering: false,
       })
       
       const imgData = canvas.toDataURL('image/png')
+      
+      // Calculate PDF dimensions based on canvas
+      const canvasWidth = canvas.width
+      const canvasHeight = canvas.height
+      
+      // Create PDF with custom size matching receipt
+      const pdfWidth = 80 // mm - thermal receipt width
+      const pdfHeight = (canvasHeight * pdfWidth) / canvasWidth + 10
+      
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
-        format: [80, 200] // Thermal receipt size
+        format: [pdfWidth, Math.min(pdfHeight, 300)] // Max 300mm height
       })
       
       const imgWidth = 70
-      const imgHeight = (canvas.height * imgWidth) / canvas.width
+      const imgHeight = (canvasHeight * imgWidth) / canvasWidth
       
-      pdf.addImage(imgData, 'PNG', 5, 5, imgWidth, imgHeight)
+      pdf.addImage(imgData, 'PNG', 5, 5, imgWidth, Math.min(imgHeight, 290))
       pdf.save(`Receipt-${order.order_number}.pdf`)
       
       toast.success('PDF downloaded!')
     } catch (error) {
-      toast.error('Failed to generate PDF')
-      console.error(error)
+      console.error('PDF Error:', error)
+      // Fallback: Try without image
+      try {
+        const pdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: [80, 150]
+        })
+        
+        // Manual PDF creation as fallback
+        pdf.setFontSize(12)
+        pdf.setFont('helvetica', 'bold')
+        pdf.text(restaurantName, 40, 10, { align: 'center' })
+        
+        pdf.setFontSize(8)
+        pdf.setFont('helvetica', 'normal')
+        pdf.text(restaurantAddress, 40, 16, { align: 'center' })
+        pdf.text(`Ph: ${restaurantPhone}`, 40, 20, { align: 'center' })
+        
+        pdf.line(5, 24, 75, 24)
+        
+        pdf.setFontSize(9)
+        pdf.text(`Order: ${order.order_number}`, 5, 30)
+        pdf.text(format(new Date(order.created_at), 'dd/MM/yy HH:mm'), 75, 30, { align: 'right' })
+        
+        pdf.line(5, 34, 75, 34)
+        
+        let yPos = 40
+        order.order_items?.forEach((item) => {
+          pdf.text(`${item.quantity}x ${item.item_name}`, 5, yPos)
+          pdf.text(`₹${parseFloat(item.total_price).toFixed(0)}`, 75, yPos, { align: 'right' })
+          yPos += 5
+        })
+        
+        yPos += 3
+        pdf.line(5, yPos, 75, yPos)
+        yPos += 6
+        
+        pdf.setFont('helvetica', 'bold')
+        pdf.setFontSize(11)
+        pdf.text('TOTAL:', 5, yPos)
+        pdf.text(`₹${parseFloat(order.total_amount).toFixed(0)}`, 75, yPos, { align: 'right' })
+        
+        yPos += 8
+        pdf.setFontSize(8)
+        pdf.setFont('helvetica', 'normal')
+        pdf.text('Thank you for dining with us!', 40, yPos, { align: 'center' })
+        
+        pdf.save(`Receipt-${order.order_number}.pdf`)
+        toast.success('PDF downloaded!')
+      } catch (fallbackError) {
+        toast.error('Failed to generate PDF. Try Print instead.')
+        console.error('Fallback PDF Error:', fallbackError)
+      }
     }
     setGenerating(false)
   }
