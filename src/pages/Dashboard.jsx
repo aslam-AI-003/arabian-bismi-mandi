@@ -1,26 +1,7 @@
-import { TrendingUp, ShoppingBag, Clock, IndianRupee } from 'lucide-react'
-
-const statsData = [
-  { label: "Today's Sales", value: "₹45,250", icon: IndianRupee, change: "+12%", color: "text-green-400" },
-  { label: "Total Orders", value: "127", icon: ShoppingBag, change: "+5%", color: "text-green-400" },
-  { label: "Pending Orders", value: "8", icon: Clock, change: "", color: "text-yellow-400" },
-  { label: "Avg Order", value: "₹356", icon: TrendingUp, change: "+3%", color: "text-green-400" },
-]
-
-const recentOrders = [
-  { id: 'ORD-045', type: 'DINE_IN', table: 5, amount: 520, status: 'PREPARING', time: '2m ago' },
-  { id: 'ORD-044', type: 'TAKEAWAY', table: null, amount: 280, status: 'READY', time: '5m ago' },
-  { id: 'ORD-043', type: 'DELIVERY', table: null, amount: 650, status: 'PREPARING', time: '8m ago' },
-  { id: 'ORD-042', type: 'DINE_IN', table: 3, amount: 890, status: 'COMPLETED', time: '15m ago' },
-]
-
-const topItems = [
-  { name: 'Chicken Mandi Full', qty: 45 },
-  { name: 'Mutton Mandi Half', qty: 32 },
-  { name: 'Chicken Shawarma', qty: 28 },
-  { name: 'Beef Biriyani', qty: 25 },
-  { name: 'Lemon Mint', qty: 20 },
-]
+import { useState, useEffect } from 'react'
+import { TrendingUp, ShoppingBag, Clock, IndianRupee, Loader2 } from 'lucide-react'
+import { getTodayOrders, supabase } from '../lib/supabase'
+import { format } from 'date-fns'
 
 const statusColors = {
   PENDING: 'badge-pending',
@@ -36,6 +17,77 @@ const typeIcons = {
 }
 
 export default function Dashboard() {
+  const [loading, setLoading] = useState(true)
+  const [todaySales, setTodaySales] = useState(0)
+  const [totalOrders, setTotalOrders] = useState(0)
+  const [pendingOrders, setPendingOrders] = useState(0)
+  const [avgOrder, setAvgOrder] = useState(0)
+  const [recentOrders, setRecentOrders] = useState([])
+  const [topItems, setTopItems] = useState([])
+
+  useEffect(() => {
+    fetchDashboardData()
+  }, [])
+
+  const fetchDashboardData = async () => {
+    setLoading(true)
+    try {
+      // Fetch today's orders
+      const { data: orders, error } = await getTodayOrders()
+      
+      if (!error && orders) {
+        // Calculate stats
+        const completedOrders = orders.filter(o => o.order_status !== 'CANCELLED')
+        const sales = completedOrders.reduce((sum, o) => sum + parseFloat(o.total_amount || 0), 0)
+        const pending = orders.filter(o => o.order_status === 'PENDING' || o.order_status === 'PREPARING').length
+        const avg = completedOrders.length > 0 ? sales / completedOrders.length : 0
+
+        setTodaySales(sales)
+        setTotalOrders(completedOrders.length)
+        setPendingOrders(pending)
+        setAvgOrder(avg)
+        setRecentOrders(orders.slice(0, 5))
+
+        // Calculate top items from order_items
+        const itemCounts = {}
+        orders.forEach(order => {
+          order.order_items?.forEach(item => {
+            const key = item.item_name
+            itemCounts[key] = (itemCounts[key] || 0) + item.quantity
+          })
+        })
+
+        const sortedItems = Object.entries(itemCounts)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 5)
+          .map(([name, qty]) => ({ name, qty }))
+
+        setTopItems(sortedItems)
+      }
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error)
+    }
+    setLoading(false)
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-brand-gold mx-auto mb-4" />
+          <p className="text-muted">Loading dashboard...</p>
+        </div>
+      </div>
+    )
+  }
+
+  const statsData = [
+    { label: "Today's Sales", value: `₹${todaySales.toLocaleString('en-IN')}`, icon: IndianRupee, color: "text-green-400" },
+    { label: "Total Orders", value: totalOrders.toString(), icon: ShoppingBag, color: "text-green-400" },
+    { label: "Active Orders", value: pendingOrders.toString(), icon: Clock, color: "text-yellow-400" },
+    { label: "Avg Order", value: `₹${avgOrder.toFixed(0)}`, icon: TrendingUp, color: "text-green-400" },
+  ]
+
   return (
     <div className="space-y-6">
       {/* Stats Grid */}
@@ -46,9 +98,6 @@ export default function Dashboard() {
               <div>
                 <p className="text-muted text-sm">{stat.label}</p>
                 <p className="text-2xl font-bold text-cream mt-1">{stat.value}</p>
-                {stat.change && (
-                  <p className={`text-sm mt-1 ${stat.color}`}>{stat.change}</p>
-                )}
               </div>
               <div className="w-10 h-10 rounded-lg bg-brand-gold/10 flex items-center justify-center">
                 <stat.icon className="text-brand-gold" size={20} />
@@ -62,51 +111,64 @@ export default function Dashboard() {
         {/* Recent Orders */}
         <div className="lg:col-span-2 card">
           <h3 className="text-lg font-semibold text-cream mb-4">Recent Orders</h3>
-          <div className="space-y-3">
-            {recentOrders.map((order) => (
-              <div 
-                key={order.id}
-                className="flex items-center justify-between p-3 rounded-lg bg-dark-primary/50 border border-brand-gold/10"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">{typeIcons[order.type]}</span>
-                  <div>
-                    <p className="text-cream font-medium">{order.id}</p>
-                    <p className="text-muted text-sm">
-                      {order.type === 'DINE_IN' ? `Table ${order.table}` : order.type.replace('_', ' ')}
-                    </p>
+          {recentOrders.length === 0 ? (
+            <div className="text-center py-8 text-muted">
+              <p>No orders yet today</p>
+              <p className="text-sm">Orders will appear here</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {recentOrders.map((order) => (
+                <div 
+                  key={order.id}
+                  className="flex items-center justify-between p-3 rounded-lg bg-dark-primary/50 border border-brand-gold/10"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{typeIcons[order.order_type]}</span>
+                    <div>
+                      <p className="text-cream font-medium">{order.order_number}</p>
+                      <p className="text-muted text-sm">
+                        {order.order_type === 'DINE_IN' ? `Table ${order.table_number}` : order.order_type.replace('_', ' ')}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-brand-gold font-mono font-semibold">₹{parseFloat(order.total_amount).toFixed(0)}</p>
+                    <span className={`badge ${statusColors[order.order_status]}`}>
+                      {order.order_status}
+                    </span>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-brand-gold font-mono font-semibold">₹{order.amount}</p>
-                  <span className={`badge ${statusColors[order.status]}`}>
-                    {order.status}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Top Selling */}
         <div className="card">
           <h3 className="text-lg font-semibold text-cream mb-4">🔥 Top Selling Today</h3>
-          <div className="space-y-3">
-            {topItems.map((item, index) => (
-              <div 
-                key={item.name}
-                className="flex items-center justify-between p-2"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="w-6 h-6 rounded-full bg-brand-gold/20 text-brand-gold text-sm flex items-center justify-center font-bold">
-                    {index + 1}
-                  </span>
-                  <span className="text-cream">{item.name}</span>
+          {topItems.length === 0 ? (
+            <div className="text-center py-8 text-muted">
+              <p>No items sold yet</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {topItems.map((item, index) => (
+                <div 
+                  key={item.name}
+                  className="flex items-center justify-between p-2"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="w-6 h-6 rounded-full bg-brand-gold/20 text-brand-gold text-sm flex items-center justify-center font-bold">
+                      {index + 1}
+                    </span>
+                    <span className="text-cream">{item.name}</span>
+                  </div>
+                  <span className="text-muted font-mono">{item.qty}</span>
                 </div>
-                <span className="text-muted font-mono">{item.qty}</span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
