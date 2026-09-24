@@ -204,7 +204,7 @@ export default function POS() {
       </div>
 
       {/* Cart Section */}
-      <div className="w-full lg:w-96 flex flex-col card">
+      <div className="w-full lg:w-[380px] xl:w-[420px] flex flex-col card shrink-0">
         {/* Order Type */}
         <div className="mb-4">
           <p className="text-muted text-sm mb-2">Order Type</p>
@@ -217,14 +217,14 @@ export default function POS() {
               <button
                 key={value}
                 onClick={() => cart.setOrderType(value)}
-                className={`flex flex-col items-center gap-1 p-3 rounded-lg border transition-all ${
+                className={`flex flex-col items-center justify-center gap-1 p-2 rounded-lg border transition-all min-h-[60px] ${
                   cart.orderType === value
                     ? 'border-brand-gold bg-brand-gold/10 text-brand-gold'
                     : 'border-brand-gold/20 text-muted hover:border-brand-gold/40'
                 }`}
               >
-                <Icon size={20} />
-                <span className="text-xs">{label}</span>
+                <Icon size={18} />
+                <span className="text-[10px] font-medium whitespace-nowrap">{label}</span>
               </button>
             ))}
           </div>
