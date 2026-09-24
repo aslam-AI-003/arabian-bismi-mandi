@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Plus, Edit2, Trash2, Search, Loader2, X, Save } from 'lucide-react'
 import { getCategories, getMenuItems, createMenuItem, updateMenuItem, deleteMenuItem } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { useLanguage } from '../context/LanguageContext'
 
 const emptyItem = {
   name: '',
@@ -22,6 +23,7 @@ export default function Menu() {
   const [editingItem, setEditingItem] = useState(null)
   const [formData, setFormData] = useState(emptyItem)
   const [saving, setSaving] = useState(false)
+  const { t, language } = useLanguage()
 
   useEffect(() => {
     fetchData()
@@ -137,10 +139,10 @@ export default function Menu() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row gap-4 justify-between">
-        <h1 className="text-2xl font-semibold text-cream">Menu Management</h1>
+        <h1 className="text-2xl font-semibold text-cream">{t('menuManagement')}</h1>
         <button onClick={handleAdd} className="btn-primary flex items-center gap-2">
           <Plus size={20} />
-          Add Item
+          {t('addItem')}
         </button>
       </div>
 
@@ -161,7 +163,7 @@ export default function Menu() {
           onChange={(e) => setSelectedCategory(e.target.value)}
           className="input max-w-xs"
         >
-          <option value="all">All Categories</option>
+          <option value="all">{language === 'ta' ? 'அனைத்து வகைகள்' : 'All Categories'}</option>
           {categories.map(cat => (
             <option key={cat.id} value={cat.id}>{cat.icon} {cat.name}</option>
           ))}
@@ -171,19 +173,19 @@ export default function Menu() {
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="stats-card">
-          <p className="text-muted text-sm">Total Items</p>
+          <p className="text-muted text-sm">{t('totalItems')}</p>
           <p className="text-2xl font-bold text-cream">{menuItems.length}</p>
         </div>
         <div className="stats-card">
-          <p className="text-muted text-sm">Categories</p>
+          <p className="text-muted text-sm">{t('categories')}</p>
           <p className="text-2xl font-bold text-cream">{categories.length}</p>
         </div>
         <div className="stats-card">
-          <p className="text-muted text-sm">Available</p>
+          <p className="text-muted text-sm">{t('available')}</p>
           <p className="text-2xl font-bold text-green-400">{menuItems.filter(i => i.is_available).length}</p>
         </div>
         <div className="stats-card">
-          <p className="text-muted text-sm">Unavailable</p>
+          <p className="text-muted text-sm">{t('unavailable')}</p>
           <p className="text-2xl font-bold text-red-400">{menuItems.filter(i => !i.is_available).length}</p>
         </div>
       </div>
@@ -201,11 +203,11 @@ export default function Menu() {
               <table className="w-full">
                 <thead>
                   <tr className="text-left text-muted text-sm border-b border-brand-gold/20">
-                    <th className="pb-3">Item</th>
-                    <th className="pb-3">Variant</th>
-                    <th className="pb-3">Price</th>
-                    <th className="pb-3">Status</th>
-                    <th className="pb-3 text-right">Actions</th>
+                    <th className="pb-3">{language === 'ta' ? 'பொருள்' : 'Item'}</th>
+                    <th className="pb-3">{t('variant')}</th>
+                    <th className="pb-3">{t('price')}</th>
+                    <th className="pb-3">{language === 'ta' ? 'நிலை' : 'Status'}</th>
+                    <th className="pb-3 text-right">{language === 'ta' ? 'செயல்கள்' : 'Actions'}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -223,7 +225,7 @@ export default function Menu() {
                       </td>
                       <td className="py-3">
                         <span className={`badge ${item.is_available ? 'badge-ready' : 'badge-pending'}`}>
-                          {item.is_available ? 'Available' : 'Unavailable'}
+                          {item.is_available ? t('available') : t('unavailable')}
                         </span>
                       </td>
                       <td className="py-3 text-right">
@@ -255,7 +257,7 @@ export default function Menu() {
           <div className="card max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-semibold text-cream">
-                {editingItem ? 'Edit Item' : 'Add New Item'}
+                {editingItem ? t('editItem') : t('addNewItem')}
               </h2>
               <button onClick={() => setShowModal(false)} className="text-muted hover:text-cream">
                 <X size={24} />
@@ -264,7 +266,7 @@ export default function Menu() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="text-muted text-sm mb-1 block">Item Name *</label>
+                <label className="text-muted text-sm mb-1 block">{t('itemName')} *</label>
                 <input
                   type="text"
                   value={formData.name}
@@ -275,7 +277,7 @@ export default function Menu() {
               </div>
 
               <div>
-                <label className="text-muted text-sm mb-1 block">Variant</label>
+                <label className="text-muted text-sm mb-1 block">{t('variant')}</label>
                 <input
                   type="text"
                   value={formData.variant}
@@ -286,7 +288,7 @@ export default function Menu() {
               </div>
 
               <div>
-                <label className="text-muted text-sm mb-1 block">Price (₹) *</label>
+                <label className="text-muted text-sm mb-1 block">{t('price')} (₹) *</label>
                 <input
                   type="number"
                   value={formData.price}
@@ -297,13 +299,13 @@ export default function Menu() {
               </div>
 
               <div>
-                <label className="text-muted text-sm mb-1 block">Category</label>
+                <label className="text-muted text-sm mb-1 block">{t('category')}</label>
                 <select
                   value={formData.category_id}
                   onChange={(e) => setFormData({...formData, category_id: e.target.value})}
                   className="input"
                 >
-                  <option value="">Select Category</option>
+                  <option value="">{t('selectCategory')}</option>
                   {categories.map(cat => (
                     <option key={cat.id} value={cat.id}>{cat.icon} {cat.name}</option>
                   ))}
@@ -318,7 +320,7 @@ export default function Menu() {
                     onChange={(e) => setFormData({...formData, is_available: e.target.checked})}
                     className="w-4 h-4 accent-brand-gold"
                   />
-                  <span className="text-cream">Available</span>
+                  <span className="text-cream">{t('available')}</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -327,7 +329,7 @@ export default function Menu() {
                     onChange={(e) => setFormData({...formData, is_vegetarian: e.target.checked})}
                     className="w-4 h-4 accent-green-500"
                   />
-                  <span className="text-cream">Vegetarian</span>
+                  <span className="text-cream">{t('vegetarian')}</span>
                 </label>
               </div>
 
@@ -337,7 +339,7 @@ export default function Menu() {
                   onClick={() => setShowModal(false)}
                   className="btn-secondary flex-1"
                 >
-                  Cancel
+                  {t('cancel')}
                 </button>
                 <button
                   type="submit"
@@ -345,7 +347,7 @@ export default function Menu() {
                   className="btn-primary flex-1 flex items-center justify-center gap-2"
                 >
                   {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-                  {saving ? 'Saving...' : 'Save'}
+                  {saving ? (language === 'ta' ? 'சேமிக்கிறது...' : 'Saving...') : t('save')}
                 </button>
               </div>
             </form>

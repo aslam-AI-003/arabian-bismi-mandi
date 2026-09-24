@@ -3,6 +3,7 @@ import { Calendar, TrendingUp, Download, Loader2, IndianRupee, ShoppingBag, Cred
 import { getOrdersByDateRange } from '../lib/supabase'
 import { format, subDays, startOfDay, endOfDay } from 'date-fns'
 import toast from 'react-hot-toast'
+import { useLanguage } from '../context/LanguageContext'
 
 export default function Reports() {
   const [loading, setLoading] = useState(true)
@@ -21,10 +22,18 @@ export default function Reports() {
     ordersByType: {},
     salesByHour: {}
   })
+  const { t, language } = useLanguage()
 
   useEffect(() => {
     fetchReports()
   }, [startDate, endDate])
+
+  const dateRangeLabels = {
+    today: language === 'ta' ? 'இன்று' : 'Today',
+    yesterday: language === 'ta' ? 'நேற்று' : 'Yesterday',
+    week: language === 'ta' ? 'வாரம்' : 'Week',
+    month: language === 'ta' ? 'மாதம்' : 'Month',
+  }
 
   const handleDateRangeChange = (range) => {
     setDateRange(range)
@@ -62,7 +71,7 @@ export default function Reports() {
       const { data, error } = await getOrdersByDateRange(start, end)
       
       if (error) {
-        toast.error('Failed to load reports')
+        toast.error(t('failedToLoad'))
         return
       }
 
@@ -115,7 +124,7 @@ export default function Reports() {
       })
     } catch (error) {
       console.error('Error:', error)
-      toast.error('Error loading reports')
+      toast.error(t('failedToLoad'))
     }
     setLoading(false)
   }
@@ -147,7 +156,7 @@ export default function Reports() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-        <h1 className="text-2xl font-semibold text-cream">Sales Reports</h1>
+        <h1 className="text-2xl font-semibold text-cream">{t('salesReports')}</h1>
         
         <div className="flex gap-2 flex-wrap">
           {['today', 'yesterday', 'week', 'month'].map(range => (
@@ -160,7 +169,7 @@ export default function Reports() {
                   : 'bg-dark-secondary text-cream hover:bg-dark-tertiary'
               }`}
             >
-              {range}
+              {dateRangeLabels[range]}
             </button>
           ))}
         </div>
@@ -176,7 +185,7 @@ export default function Reports() {
             onChange={(e) => { setStartDate(e.target.value); setDateRange('custom') }}
             className="input max-w-[150px]"
           />
-          <span className="text-muted">to</span>
+          <span className="text-muted">{language === 'ta' ? 'முதல்' : 'to'}</span>
           <input
             type="date"
             value={endDate}
@@ -191,28 +200,28 @@ export default function Reports() {
         <div className="stats-card">
           <div className="flex items-center gap-2 mb-2">
             <IndianRupee className="text-brand-gold" size={20} />
-            <span className="text-muted">Total Sales</span>
+            <span className="text-muted">{t('todaysSales')}</span>
           </div>
           <p className="text-3xl font-bold text-brand-gold">₹{stats.totalSales.toLocaleString('en-IN')}</p>
         </div>
         <div className="stats-card">
           <div className="flex items-center gap-2 mb-2">
             <ShoppingBag className="text-brand-gold" size={20} />
-            <span className="text-muted">Total Orders</span>
+            <span className="text-muted">{t('totalOrders')}</span>
           </div>
           <p className="text-3xl font-bold text-cream">{stats.totalOrders}</p>
         </div>
         <div className="stats-card">
           <div className="flex items-center gap-2 mb-2">
             <TrendingUp className="text-brand-gold" size={20} />
-            <span className="text-muted">Avg Order</span>
+            <span className="text-muted">{t('avgOrder')}</span>
           </div>
           <p className="text-3xl font-bold text-cream">₹{stats.avgOrder.toFixed(0)}</p>
         </div>
         <div className="stats-card">
           <div className="flex items-center gap-2 mb-2">
             <Wallet className="text-brand-gold" size={20} />
-            <span className="text-muted">Cash Sales</span>
+            <span className="text-muted">{t('cashSales')}</span>
           </div>
           <p className="text-3xl font-bold text-green-400">₹{stats.cashSales.toLocaleString('en-IN')}</p>
         </div>
@@ -221,11 +230,11 @@ export default function Reports() {
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Payment Methods */}
         <div className="card">
-          <h3 className="text-lg font-semibold text-cream mb-4">💳 Payment Methods</h3>
+          <h3 className="text-lg font-semibold text-cream mb-4">💳 {t('paymentMethods')}</h3>
           <div className="space-y-4">
             {[
-              { label: 'Cash', value: stats.cashSales, color: 'bg-green-500' },
-              { label: 'Card', value: stats.cardSales, color: 'bg-blue-500' },
+              { label: language === 'ta' ? 'பணம்' : 'Cash', value: stats.cashSales, color: 'bg-green-500' },
+              { label: language === 'ta' ? 'கார்டு' : 'Card', value: stats.cardSales, color: 'bg-blue-500' },
               { label: 'UPI', value: stats.upiSales, color: 'bg-purple-500' },
             ].map(item => (
               <div key={item.label}>
@@ -246,12 +255,12 @@ export default function Reports() {
 
         {/* Order Types */}
         <div className="card">
-          <h3 className="text-lg font-semibold text-cream mb-4">📦 Order Types</h3>
+          <h3 className="text-lg font-semibold text-cream mb-4">📦 {t('orderTypes')}</h3>
           <div className="grid grid-cols-3 gap-4">
             {[
-              { label: 'Dine In', value: stats.ordersByType.DINE_IN || 0, icon: '🍽️' },
-              { label: 'Takeaway', value: stats.ordersByType.TAKEAWAY || 0, icon: '📦' },
-              { label: 'Delivery', value: stats.ordersByType.DELIVERY || 0, icon: '🛵' },
+              { label: t('dineIn'), value: stats.ordersByType.DINE_IN || 0, icon: '🍽️' },
+              { label: t('takeaway'), value: stats.ordersByType.TAKEAWAY || 0, icon: '📦' },
+              { label: t('delivery'), value: stats.ordersByType.DELIVERY || 0, icon: '🛵' },
             ].map(item => (
               <div key={item.label} className="text-center p-4 rounded-lg bg-dark-primary/50 border border-brand-gold/10">
                 <span className="text-3xl">{item.icon}</span>
@@ -265,18 +274,18 @@ export default function Reports() {
 
       {/* Top Selling Items */}
       <div className="card">
-        <h3 className="text-lg font-semibold text-cream mb-4">🔥 Top Selling Items</h3>
+        <h3 className="text-lg font-semibold text-cream mb-4">🔥 {t('topSellingItems')}</h3>
         {stats.topItems.length === 0 ? (
-          <p className="text-muted text-center py-8">No sales data for this period</p>
+          <p className="text-muted text-center py-8">{t('noSalesData')}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="text-left text-muted text-sm border-b border-brand-gold/20">
                   <th className="pb-3">#</th>
-                  <th className="pb-3">Item</th>
-                  <th className="pb-3 text-right">Qty Sold</th>
-                  <th className="pb-3 text-right">Revenue</th>
+                  <th className="pb-3">{language === 'ta' ? 'பொருள்' : 'Item'}</th>
+                  <th className="pb-3 text-right">{t('qtySold')}</th>
+                  <th className="pb-3 text-right">{t('revenue')}</th>
                 </tr>
               </thead>
               <tbody>
