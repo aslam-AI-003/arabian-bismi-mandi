@@ -1,68 +1,77 @@
-import { useRef, useState } from 'react'
-import { X, Printer, Download, MessageCircle, Share2 } from 'lucide-react'
+import { useRef, useState, useEffect } from 'react'
+import { X, Printer, Download, MessageCircle, Share2, Usb, Wifi, WifiOff } from 'lucide-react'
 import { format } from 'date-fns'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import toast from 'react-hot-toast'
 import bismiLogo from '../assets/Bismi_Logo.jpg'
+import { 
+  printReceipt, 
+  printReceiptSilent, 
+  printReceiptSerial, 
+  isPrinterConnected, 
+  loadPrinterConfig 
+} from '../lib/thermalPrinter'
 
 export default function ReceiptModal({ order, onClose, settings = {} }) {
   const receiptRef = useRef(null)
   const [generating, setGenerating] = useState(false)
+  const [printerConnected, setPrinterConnected] = useState(false)
+  const [printerMode, setPrinterMode] = useState('silent')
 
   const restaurantName = settings.restaurant_name || 'Arabian Bismi Mandi Restaurant'
   const restaurantAddress = settings.restaurant_address || 'Near Kovilady Bus Stand, Main Road, Chakkarapalli'
   const restaurantPhone = settings.restaurant_phone || '9894092449 | 9025499668'
   const gstNumber = settings.gst_number || ''
 
+  useEffect(() => {
+    const config = loadPrinterConfig()
+    setPrinterMode(config.mode)
+    setPrinterConnected(isPrinterConnected())
+  }, [])
+
   if (!order) return null
 
-  // Print Receipt
-  const handlePrint = () => {
-    const printContent = receiptRef.current
-    const printWindow = window.open('', '', 'width=350,height=600')
-    
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Receipt - ${order.order_number}</title>
-          <style>
-            body {
-              font-family: 'Courier New', monospace;
-              padding: 10px;
-              max-width: 300px;
-              margin: 0 auto;
-            }
-            .header { text-align: center; margin-bottom: 10px; }
-            .header h1 { font-size: 16px; margin: 5px 0; }
-            .header p { font-size: 10px; margin: 2px 0; }
-            .logo { width: 60px; height: 60px; border-radius: 50%; margin: 0 auto 5px; display: block; }
-            .divider { border-top: 1px dashed #333; margin: 8px 0; }
-            .row { display: flex; justify-content: space-between; font-size: 11px; margin: 3px 0; }
-            .items { margin: 5px 0; }
-            .item { display: flex; justify-content: space-between; font-size: 10px; margin: 3px 0; }
-            .item-name { flex: 1; padding-right: 5px; }
-            .total-row { font-size: 14px; font-weight: bold; }
-            .footer { text-align: center; font-size: 10px; margin-top: 10px; }
-            @media print {
-              body { padding: 0; }
-            }
-          </style>
-        </head>
-        <body>
-          ${printContent.innerHTML}
-        </body>
-      </html>
-    `)
-    
-    printWindow.document.close()
-    printWindow.focus()
-    setTimeout(() => {
-      printWindow.print()
-      printWindow.close()
-    }, 250)
-    
-    toast.success('Receipt sent to printer!')
+  // Thermal Print (Auto-selects best method)
+  const handleThermalPrint = async () => {
+    try {
+      const result = await printReceipt(order, settings)
+      if (result.success) {
+        toast.success(result.message)
+      } else {
+        toast.error(result.message)
+      }
+    } catch (error) {
+      toast.error(error.message || 'Print failed')
+    }
+  }
+
+  // Silent Print (Browser default printer)
+  const handleSilentPrint = () => {
+    const result = printReceiptSilent(order, settings)
+    if (result.success) {
+      toast.success(result.message)
+    } else {
+      toast.error(result.message)
+    }
+  }
+
+  // Direct ESC/POS Print (USB connected)
+  const handleDirectPrint = async () => {
+    if (!isPrinterConnected()) {
+      toast.error('USB Printer not connected. Go to Settings → Printer to connect.')
+      return
+    }
+    try {
+      const result = await printReceiptSerial(order, settings)
+      if (result.success) {
+        toast.success(result.message)
+      } else {
+        toast.error(result.message)
+      }
+    } catch (error) {
+      toast.error(error.message || 'Direct print failed')
+    }
   }
 
   // Download as PDF
@@ -80,18 +89,16 @@ export default function ReceiptModal({ order, onClose, settings = {} }) {
       
       const imgData = canvas.toDataURL('image/png')
       
-      // Calculate PDF dimensions based on canvas
       const canvasWidth = canvas.width
       const canvasHeight = canvas.height
       
-      // Create PDF with custom size matching receipt
-      const pdfWidth = 80 // mm - thermal receipt width
+      const pdfWidth = 80
       const pdfHeight = (canvasHeight * pdfWidth) / canvasWidth + 10
       
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
-        format: [pdfWidth, Math.min(pdfHeight, 300)] // Max 300mm height
+        format: [pdfWidth, Math.min(pdfHeight, 300)]
       })
       
       const imgWidth = 70
@@ -103,7 +110,6 @@ export default function ReceiptModal({ order, onClose, settings = {} }) {
       toast.success('PDF downloaded!')
     } catch (error) {
       console.error('PDF Error:', error)
-      // Fallback: Try without image
       try {
         const pdf = new jsPDF({
           orientation: 'portrait',
@@ -111,7 +117,6 @@ export default function ReceiptModal({ order, onClose, settings = {} }) {
           format: [80, 150]
         })
         
-        // Manual PDF creation as fallback
         pdf.setFontSize(12)
         pdf.setFont('helvetica', 'bold')
         pdf.text(restaurantName, 40, 10, { align: 'center' })
@@ -162,7 +167,6 @@ export default function ReceiptModal({ order, onClose, settings = {} }) {
 
   // Share via WhatsApp
   const handleWhatsAppShare = async () => {
-    // Generate receipt text for WhatsApp
     const itemsList = order.order_items?.map(item => 
       `• ${item.item_name}${item.variant ? ` (${item.variant})` : ''} x${item.quantity} = ₹${parseFloat(item.total_price).toFixed(0)}`
     ).join('\n')
@@ -175,6 +179,8 @@ export default function ReceiptModal({ order, onClose, settings = {} }) {
 *Order: ${order.order_number}*
 📅 ${format(new Date(order.created_at), 'dd MMM yyyy, hh:mm a')}
 🍽️ ${order.order_type?.replace('_', ' ')}${order.table_number ? ` | Table: ${order.table_number}` : ''}
+${order.customer_name ? `👤 ${order.customer_name}` : ''}
+${order.customer_phone ? `📱 ${order.customer_phone}` : ''}
 ━━━━━━━━━━━━━━━
 *Items:*
 ${itemsList}
@@ -201,7 +207,6 @@ _"Good Food Brings People Together"_
   const handleNativeShare = async () => {
     if (navigator.share) {
       try {
-        // Generate image for sharing
         const canvas = await html2canvas(receiptRef.current, {
           scale: 2,
           backgroundColor: '#ffffff'
@@ -217,7 +222,6 @@ _"Good Food Brings People Together"_
           })
         })
       } catch (error) {
-        // Fallback to text share
         const text = `Receipt ${order.order_number} - Total: ₹${parseFloat(order.total_amount).toFixed(0)}`
         await navigator.share({
           title: `Receipt - ${order.order_number}`,
@@ -234,7 +238,18 @@ _"Good Food Brings People Together"_
       <div className="bg-dark-secondary rounded-xl max-w-md w-full max-h-[90vh] overflow-hidden">
         {/* Modal Header */}
         <div className="flex items-center justify-between p-4 border-b border-brand-gold/20">
-          <h2 className="text-lg font-bold text-cream">Receipt</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-bold text-cream">Receipt</h2>
+            {/* Printer Status Badge */}
+            <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${
+              printerConnected 
+                ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+                : 'bg-muted/20 text-muted border border-muted/30'
+            }`}>
+              {printerConnected ? <Wifi size={10} /> : <WifiOff size={10} />}
+              {printerConnected ? 'USB' : 'Browser'}
+            </div>
+          </div>
           <button 
             onClick={onClose}
             className="p-2 text-muted hover:text-cream hover:bg-dark-primary rounded-lg"
@@ -274,6 +289,17 @@ _"Good Food Brings People Together"_
                 <span>{order.order_type?.replace('_', ' ')}</span>
                 {order.table_number && <span>Table: {order.table_number}</span>}
               </div>
+              {/* Customer info */}
+              {order.customer_name && (
+                <div className="text-[10px] text-gray-600 mt-1">
+                  Customer: {order.customer_name}
+                </div>
+              )}
+              {order.customer_phone && (
+                <div className="text-[10px] text-gray-600">
+                  Phone: {order.customer_phone}
+                </div>
+              )}
             </div>
 
             <div className="border-t border-dashed border-gray-400 my-2" />
@@ -309,7 +335,7 @@ _"Good Food Brings People Together"_
               </div>
               {order.discount_amount > 0 && (
                 <div className="flex justify-between text-green-600">
-                  <span>Discount ({order.discount_percentage || 0}%)</span>
+                  <span>Discount</span>
                   <span>-₹{parseFloat(order.discount_amount).toFixed(2)}</span>
                 </div>
               )}
@@ -358,31 +384,53 @@ _"Good Food Brings People Together"_
 
         {/* Action Buttons */}
         <div className="p-4 border-t border-brand-gold/20 space-y-3">
-          {/* Primary Actions */}
+          {/* Primary Print Button - Thermal */}
+          <button
+            onClick={handleThermalPrint}
+            disabled={generating}
+            className="w-full flex items-center justify-center gap-2 p-3 rounded-lg bg-brand-gold text-dark-primary font-bold text-sm hover:bg-brand-gold-light transition-all shadow-gold"
+          >
+            <Printer size={20} />
+            🖨️ Print Receipt
+            {printerConnected && <span className="text-xs opacity-70">(USB Direct)</span>}
+          </button>
+
+          {/* Secondary Actions */}
           <div className="grid grid-cols-3 gap-2">
+            {/* USB Direct Print (if connected) */}
+            {printerConnected && (
+              <button
+                onClick={handleDirectPrint}
+                disabled={generating}
+                className="flex flex-col items-center gap-1 p-2.5 rounded-lg bg-green-600 hover:bg-green-500 text-white transition-all"
+              >
+                <Usb size={18} />
+                <span className="text-[10px]">USB Print</span>
+              </button>
+            )}
             <button
-              onClick={handlePrint}
+              onClick={handleSilentPrint}
               disabled={generating}
-              className="flex flex-col items-center gap-1 p-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-all"
+              className="flex flex-col items-center gap-1 p-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-all"
             >
-              <Printer size={20} />
-              <span className="text-xs">Print</span>
+              <Printer size={18} />
+              <span className="text-[10px]">Browser</span>
             </button>
             <button
               onClick={handleDownloadPDF}
               disabled={generating}
-              className="flex flex-col items-center gap-1 p-3 rounded-lg bg-red-600 hover:bg-red-500 text-white transition-all"
+              className="flex flex-col items-center gap-1 p-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white transition-all"
             >
-              <Download size={20} />
-              <span className="text-xs">{generating ? 'Wait...' : 'PDF'}</span>
+              <Download size={18} />
+              <span className="text-[10px]">{generating ? 'Wait...' : 'PDF'}</span>
             </button>
             <button
               onClick={handleWhatsAppShare}
               disabled={generating}
-              className="flex flex-col items-center gap-1 p-3 rounded-lg bg-green-600 hover:bg-green-500 text-white transition-all"
+              className="flex flex-col items-center gap-1 p-2.5 rounded-lg bg-green-600 hover:bg-green-500 text-white transition-all"
             >
-              <MessageCircle size={20} />
-              <span className="text-xs">WhatsApp</span>
+              <MessageCircle size={18} />
+              <span className="text-[10px]">WhatsApp</span>
             </button>
           </div>
 
@@ -390,7 +438,7 @@ _"Good Food Brings People Together"_
           {'share' in navigator && (
             <button
               onClick={handleNativeShare}
-              className="w-full flex items-center justify-center gap-2 p-3 rounded-lg bg-brand-gold/20 hover:bg-brand-gold/30 text-brand-gold transition-all"
+              className="w-full flex items-center justify-center gap-2 p-2.5 rounded-lg bg-brand-gold/20 hover:bg-brand-gold/30 text-brand-gold transition-all"
             >
               <Share2 size={18} />
               <span className="text-sm font-medium">Share Receipt</span>

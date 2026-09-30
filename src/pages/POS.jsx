@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Search, Plus, Minus, Trash2, UtensilsCrossed, Package, Truck, Loader2 } from 'lucide-react'
+import { Search, Plus, Minus, Trash2, UtensilsCrossed, Package, Truck, Loader2, Printer } from 'lucide-react'
 import { useCart } from '../context/CartContext'
-import { getCategories, getMenuItems, createOrder, createOrderItems } from '../lib/supabase'
+import { getCategories, getMenuItems, createOrder, createOrderItems, getOrders } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { useLanguage } from '../context/LanguageContext'
+import { printReceipt, loadPrinterConfig } from '../lib/thermalPrinter'
+import ReceiptModal from '../components/ReceiptModal'
 
 export default function POS() {
   const [categories, setCategories] = useState([])
@@ -12,6 +14,8 @@ export default function POS() {
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [placingOrder, setPlacingOrder] = useState(false)
+  const [lastOrder, setLastOrder] = useState(null)
+  const [showReceipt, setShowReceipt] = useState(false)
   const cart = useCart()
   const { t, language } = useLanguage()
 
@@ -118,6 +122,33 @@ export default function POS() {
         toast.error('Order created but items failed to save')
       } else {
         toast.success(`Order ${order.order_number} placed successfully!`)
+        
+        // Build complete order object for receipt/printing
+        const completeOrder = {
+          ...order,
+          order_items: orderItems.map((item, idx) => ({
+            ...item,
+            id: idx,
+          }))
+        }
+        setLastOrder(completeOrder)
+        
+        // Auto-print if enabled in settings
+        const config = loadPrinterConfig()
+        if (config.autoPrint) {
+          try {
+            const result = await printReceipt(completeOrder)
+            if (result.success) {
+              toast.success('🖨️ Receipt printed automatically!')
+            }
+          } catch (printError) {
+            console.error('Auto-print error:', printError)
+          }
+        } else {
+          // Show receipt modal for manual print
+          setShowReceipt(true)
+        }
+        
         cart.clearCart()
       }
     } catch (error) {
@@ -140,6 +171,7 @@ export default function POS() {
   }
 
   return (
+    <>
     <div className="flex flex-col lg:flex-row gap-4 h-[calc(100vh-120px)]">
       {/* Menu Section */}
       <div className="flex-1 flex flex-col">
@@ -236,8 +268,8 @@ export default function POS() {
 
         {/* Table Number (Dine In) */}
         {cart.orderType === 'DINE_IN' && (
-          <div className="mb-4">
-            <label className="text-muted text-sm mb-2 block">{t('tableNumber')} *</label>
+          <div className="mb-3">
+            <label className="text-muted text-sm mb-1 block">{t('tableNumber')} *</label>
             <input
               type="number"
               value={cart.tableNumber}
@@ -248,41 +280,45 @@ export default function POS() {
           </div>
         )}
 
-        {/* Customer Info (Delivery) */}
-        {cart.orderType === 'DELIVERY' && (
-          <div className="mb-4 space-y-3">
+        {/* Customer Info - Shown for ALL order types */}
+        <div className="mb-4 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-muted text-sm mb-1 block">{t('customerName')}</label>
-              <input
-                type="text"
-                value={cart.customerName}
-                onChange={(e) => cart.setCustomerName(e.target.value)}
-                className="input"
-                placeholder="Customer name"
-              />
-            </div>
-            <div>
-              <label className="text-muted text-sm mb-1 block">{t('phoneNumber')}</label>
+              <label className="text-muted text-xs mb-1 block">📱 {t('phoneNumber')}</label>
               <input
                 type="tel"
                 value={cart.customerPhone}
                 onChange={(e) => cart.setCustomerPhone(e.target.value)}
-                className="input"
-                placeholder={t('phoneNumber')}
+                className="input text-sm py-2"
+                placeholder="9894092449"
               />
             </div>
             <div>
-              <label className="text-muted text-sm mb-1 block">{t('address')}</label>
+              <label className="text-muted text-xs mb-1 block">👤 {t('customerName')}</label>
+              <input
+                type="text"
+                value={cart.customerName}
+                onChange={(e) => cart.setCustomerName(e.target.value)}
+                className="input text-sm py-2"
+                placeholder={t('customerName')}
+              />
+            </div>
+          </div>
+
+          {/* Address - Only for Delivery */}
+          {cart.orderType === 'DELIVERY' && (
+            <div>
+              <label className="text-muted text-xs mb-1 block">📍 {t('address')}</label>
               <textarea
                 value={cart.customerAddress}
                 onChange={(e) => cart.setCustomerAddress(e.target.value)}
-                className="input"
+                className="input text-sm py-2"
                 rows={2}
                 placeholder={t('deliveryAddress')}
               />
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Cart Items */}
         <div className="flex-1 overflow-y-auto mb-4">
@@ -390,5 +426,17 @@ export default function POS() {
         </div>
       </div>
     </div>
+
+    {/* Receipt Modal - Shows after order placement */}
+    {showReceipt && lastOrder && (
+      <ReceiptModal
+        order={lastOrder}
+        onClose={() => {
+          setShowReceipt(false)
+          setLastOrder(null)
+        }}
+      />
+    )}
+    </>
   )
 }
