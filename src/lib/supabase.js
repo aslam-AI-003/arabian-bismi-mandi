@@ -193,3 +193,92 @@ export const getActiveOrders = async () => {
   
   return { data, error }
 }
+
+// ============================================
+// OFFERS
+// ============================================
+
+export const getOffers = async (activeOnly = false) => {
+  let query = supabase
+    .from('offers')
+    .select('*')
+    .order('created_at', { ascending: false })
+  
+  if (activeOnly) {
+    query = query.eq('is_active', true)
+  }
+  
+  const { data, error } = await query
+  return { data, error }
+}
+
+export const createOffer = async (offerData) => {
+  const { data, error } = await supabase
+    .from('offers')
+    .insert([offerData])
+    .select()
+    .single()
+  return { data, error }
+}
+
+export const updateOffer = async (id, offerData) => {
+  const { data, error } = await supabase
+    .from('offers')
+    .update({ ...offerData, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single()
+  return { data, error }
+}
+
+export const deleteOffer = async (id) => {
+  const { data, error } = await supabase
+    .from('offers')
+    .delete()
+    .eq('id', id)
+  return { data, error }
+}
+
+// ============================================
+// CUSTOMERS (from orders)
+// ============================================
+
+export const getCustomers = async () => {
+  // Get unique customers from orders who have phone numbers
+  const { data, error } = await supabase
+    .from('orders')
+    .select('customer_name, customer_phone, created_at')
+    .not('customer_phone', 'is', null)
+    .not('customer_phone', 'eq', '')
+    .order('created_at', { ascending: false })
+  
+  if (error) return { data: null, error }
+  
+  // Aggregate unique customers with order count and last visit
+  const customerMap = new Map()
+  data?.forEach(order => {
+    const phone = order.customer_phone?.trim()
+    if (!phone) return
+    
+    if (customerMap.has(phone)) {
+      const existing = customerMap.get(phone)
+      existing.order_count += 1
+      // Keep the most recent name
+      if (order.customer_name && !existing.customer_name) {
+        existing.customer_name = order.customer_name
+      }
+    } else {
+      customerMap.set(phone, {
+        customer_phone: phone,
+        customer_name: order.customer_name || '',
+        order_count: 1,
+        last_visit: order.created_at,
+      })
+    }
+  })
+  
+  const customers = Array.from(customerMap.values())
+    .sort((a, b) => new Date(b.last_visit) - new Date(a.last_visit))
+  
+  return { data: customers, error: null }
+}

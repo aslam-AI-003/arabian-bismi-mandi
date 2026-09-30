@@ -9,7 +9,7 @@ import {
   LogOut,
   Menu,
   X,
-  ChefHat,
+  Gift,
   Languages,
   Calculator
 } from 'lucide-react'
@@ -30,7 +30,7 @@ export default function Layout() {
     { path: '/orders', icon: ClipboardList, labelKey: 'orders' },
     { path: '/reports', icon: BarChart3, labelKey: 'reports' },
     { path: '/menu', icon: UtensilsCrossed, labelKey: 'menu' },
-    { path: '/kitchen', icon: ChefHat, labelKey: 'kitchen' },
+    { path: '/offers', icon: Gift, labelKey: 'offers' },
     { path: '/settings', icon: Settings, labelKey: 'settings' },
   ]
 
