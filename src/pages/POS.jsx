@@ -172,11 +172,11 @@ export default function POS() {
 
   return (
     <>
-    <div className="flex flex-col lg:flex-row gap-4 h-[calc(100vh-120px)]">
-      {/* Menu Section */}
-      <div className="flex-1 flex flex-col">
+    <div className="flex flex-col lg:flex-row gap-3 h-[calc(100vh-120px)]">
+      {/* LEFT SIDE - Menu Section (scrollable independently) */}
+      <div className="flex-1 flex flex-col min-w-0 h-full">
         {/* Search */}
-        <div className="relative mb-4">
+        <div className="relative mb-3 shrink-0">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={18} />
           <input
             type="text"
@@ -188,49 +188,49 @@ export default function POS() {
         </div>
 
         {/* Categories */}
-        <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+        <div className="flex gap-2 mb-3 overflow-x-auto pb-2 shrink-0">
           {categories.map((cat) => (
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full whitespace-nowrap transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full whitespace-nowrap transition-all text-sm ${
                 selectedCategory === cat.id
                   ? 'bg-brand-gold text-dark-primary font-semibold'
                   : 'bg-dark-secondary/50 text-cream hover:bg-dark-secondary'
               }`}
             >
-              <span>{cat.icon || '🍽️'}</span>
+              <span className="text-sm">{cat.icon || '🍽️'}</span>
               <span>{language === 'ta' && cat.name_ta ? cat.name_ta : cat.name}</span>
             </button>
           ))}
         </div>
 
-        {/* Menu Grid */}
-        <div className="flex-1 overflow-y-auto">
+        {/* Menu Grid - scrollable */}
+        <div className="flex-1 overflow-y-auto pr-1">
           {filteredItems.length === 0 ? (
             <div className="text-center py-12 text-muted">
               <p>{t('noItemsFound')}</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {filteredItems.map((item) => (
                 <div
                   key={item.id}
                   onClick={() => handleAddItem(item)}
-                  className="card-menu-item"
+                  className="card-menu-item p-3"
                 >
-                  <div className="text-3xl mb-2">
+                  <div className="text-2xl mb-1">
                     {item.categories?.icon || '🍽️'}
                   </div>
-                  <h4 className="text-cream font-medium text-sm">
+                  <h4 className="text-cream font-medium text-xs leading-tight">
                     {language === 'ta' && item.name_ta ? item.name_ta : item.name}
                   </h4>
                   {item.variant && (
-                    <p className="text-muted text-xs">{item.variant}</p>
+                    <p className="text-muted text-[10px]">{item.variant}</p>
                   )}
-                  <div className="mt-2 flex items-center justify-between">
-                    <span className="price-badge">₹{parseFloat(item.price).toFixed(0)}</span>
-                    <Plus className="text-accent-amber" size={20} />
+                  <div className="mt-1.5 flex items-center justify-between">
+                    <span className="price-badge text-xs px-2 py-0.5">₹{parseFloat(item.price).toFixed(0)}</span>
+                    <Plus className="text-accent-amber" size={16} />
                   </div>
                 </div>
               ))}
@@ -239,8 +239,8 @@ export default function POS() {
         </div>
       </div>
 
-      {/* Cart Section */}
-      <div className="w-full lg:w-[380px] xl:w-[420px] flex flex-col card shrink-0 overflow-y-auto max-h-[calc(100vh-120px)]">
+      {/* RIGHT SIDE - Cart/Order Section (sticky, independently scrollable) */}
+      <div className="w-full lg:w-[360px] xl:w-[400px] shrink-0 h-full overflow-y-auto card p-3 flex flex-col">
         {/* Order Type */}
         <div className="mb-4">
           <p className="text-muted text-sm mb-2">{t('orderType')}</p>
