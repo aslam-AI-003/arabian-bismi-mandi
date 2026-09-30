@@ -240,7 +240,7 @@ export default function POS() {
       </div>
 
       {/* Cart Section */}
-      <div className="w-full lg:w-[380px] xl:w-[420px] flex flex-col card shrink-0">
+      <div className="w-full lg:w-[380px] xl:w-[420px] flex flex-col card shrink-0 overflow-y-auto max-h-[calc(100vh-120px)]">
         {/* Order Type */}
         <div className="mb-4">
           <p className="text-muted text-sm mb-2">{t('orderType')}</p>
@@ -321,7 +321,7 @@ export default function POS() {
         </div>
 
         {/* Cart Items */}
-        <div className="flex-1 overflow-y-auto mb-4">
+        <div className="min-h-[150px] max-h-[300px] overflow-y-auto mb-4">
           <h3 className="text-cream font-semibold mb-3">{t('cartItems')} ({cart.itemCount})</h3>
           {cart.items.length === 0 ? (
             <div className="text-center py-8 text-muted">
