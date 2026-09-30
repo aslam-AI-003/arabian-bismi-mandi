@@ -9,6 +9,7 @@ import { format, subDays, startOfDay, endOfDay } from 'date-fns'
 import toast from 'react-hot-toast'
 import { useLanguage } from '../context/LanguageContext'
 import jsPDF from 'jspdf'
+import DayEndSettlement from '../components/DayEndSettlement'
 
 export default function Reports() {
   const [loading, setLoading] = useState(true)
@@ -468,7 +469,8 @@ export default function Reports() {
   // Tab labels
   const tabLabels = {
     sales: language === 'ta' ? 'விற்பனை அறிக்கை' : 'Sales Report',
-    dayend: language === 'ta' ? 'நாள் முடிவு கணக்கு' : 'Day End Settlement',
+    dayend: language === 'ta' ? 'நாள் முடிவு அறிக்கை' : 'Day End Report',
+    settlement: language === 'ta' ? '💰 நாள் கணக்கு' : '💰 Cash Settlement',
   }
 
   if (loading) {
@@ -508,6 +510,17 @@ export default function Reports() {
           >
             <Calculator size={18} />
             {tabLabels.dayend}
+          </button>
+          <button
+            onClick={() => setActiveTab('settlement')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-all ${
+              activeTab === 'settlement'
+                ? 'bg-brand-gold text-dark-primary font-semibold'
+                : 'bg-dark-secondary/50 text-cream hover:bg-dark-secondary'
+            }`}
+          >
+            <Wallet size={18} />
+            {tabLabels.settlement}
           </button>
         </div>
         
@@ -811,6 +824,11 @@ export default function Reports() {
             </div>
           )}
         </div>
+      )}
+
+      {/* CASH SETTLEMENT TAB CONTENT */}
+      {activeTab === 'settlement' && (
+        <DayEndSettlement />
       )}
     </div>
   )

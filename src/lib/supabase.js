@@ -282,3 +282,66 @@ export const getCustomers = async () => {
   
   return { data: customers, error: null }
 }
+
+// ============================================
+// SETTLEMENTS
+// ============================================
+
+export const getSettlement = async (date) => {
+  const dateStr = typeof date === 'string' ? date : date.toISOString().split('T')[0]
+  const { data, error } = await supabase
+    .from('settlements')
+    .select('*')
+    .eq('settlement_date', dateStr)
+    .single()
+  return { data, error }
+}
+
+export const getSettlements = async (limit = 30) => {
+  const { data, error } = await supabase
+    .from('settlements')
+    .select('*')
+    .order('settlement_date', { ascending: false })
+    .limit(limit)
+  return { data, error }
+}
+
+export const upsertSettlement = async (settlementData) => {
+  const { data, error } = await supabase
+    .from('settlements')
+    .upsert(
+      { ...settlementData, updated_at: new Date().toISOString() },
+      { onConflict: 'settlement_date' }
+    )
+    .select()
+    .single()
+  return { data, error }
+}
+
+// Cash Outs
+export const getCashOuts = async (date) => {
+  const dateStr = typeof date === 'string' ? date : date.toISOString().split('T')[0]
+  const { data, error } = await supabase
+    .from('cash_outs')
+    .select('*')
+    .eq('settlement_date', dateStr)
+    .order('created_at', { ascending: true })
+  return { data, error }
+}
+
+export const addCashOut = async (entry) => {
+  const { data, error } = await supabase
+    .from('cash_outs')
+    .insert([entry])
+    .select()
+    .single()
+  return { data, error }
+}
+
+export const deleteCashOut = async (id) => {
+  const { data, error } = await supabase
+    .from('cash_outs')
+    .delete()
+    .eq('id', id)
+  return { data, error }
+}
