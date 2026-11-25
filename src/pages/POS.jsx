@@ -388,10 +388,6 @@ export default function POS() {
               <span className="font-mono">-₹{cart.discountAmount.toFixed(2)}</span>
             </div>
           )}
-          <div className="flex justify-between text-muted">
-            <span>{t('gst')} ({cart.taxPercentage}%)</span>
-            <span className="font-mono">₹{cart.taxAmount.toFixed(2)}</span>
-          </div>
           <div className="flex justify-between text-cream text-lg font-semibold pt-2 border-t border-brand-gold/20">
             <span>{t('total')}</span>
             <span className="font-mono text-brand-gold">₹{cart.total.toFixed(2)}</span>

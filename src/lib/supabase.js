@@ -14,6 +14,19 @@ export const signIn = async (email, password) => {
   return { data, error }
 }
 
+// Staff log in with their phone number instead of an email.
+// Supabase Auth needs an email internally, so we convert the phone
+// number to a fixed-format "fake" email behind the scenes — the UI
+// only ever shows/asks for the phone number.
+export const phoneToAuthEmail = (phone) => {
+  const digits = (phone || '').replace(/\D/g, '')
+  return `${digits}@staff.arabianbismimandi.app`
+}
+
+export const signInWithPhone = async (phone, password) => {
+  return signIn(phoneToAuthEmail(phone), password)
+}
+
 export const signOut = async () => {
   const { error } = await supabase.auth.signOut()
   return { error }
@@ -197,6 +210,23 @@ export const getActiveOrders = async () => {
 // ============================================
 // OFFERS
 // ============================================
+
+const OFFER_IMAGES_BUCKET = 'offer-images'
+
+// Upload an offer image file to Supabase Storage and return its public URL
+export const uploadOfferImage = async (file) => {
+  const ext = file.name.split('.').pop()
+  const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+
+  const { error: uploadError } = await supabase.storage
+    .from(OFFER_IMAGES_BUCKET)
+    .upload(fileName, file, { cacheControl: '3600', upsert: false })
+
+  if (uploadError) return { data: null, error: uploadError }
+
+  const { data } = supabase.storage.from(OFFER_IMAGES_BUCKET).getPublicUrl(fileName)
+  return { data: { publicUrl: data.publicUrl, path: fileName }, error: null }
+}
 
 export const getOffers = async (activeOnly = false) => {
   let query = supabase

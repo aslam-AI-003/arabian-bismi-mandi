@@ -22,7 +22,6 @@ export default function ReceiptModal({ order, onClose, settings = {} }) {
   const restaurantName = settings.restaurant_name || 'Arabian Bismi Mandi Restaurant'
   const restaurantAddress = settings.restaurant_address || 'Near Kovilady Bus Stand, Main Road, Chakkarapalli'
   const restaurantPhone = settings.restaurant_phone || '9894092449 | 9025499668'
-  const gstNumber = settings.gst_number || ''
 
   useEffect(() => {
     const config = loadPrinterConfig()
@@ -186,8 +185,7 @@ ${order.customer_phone ? `📱 ${order.customer_phone}` : ''}
 ${itemsList}
 ━━━━━━━━━━━━━━━
 Subtotal: ₹${parseFloat(order.subtotal).toFixed(0)}
-${order.discount_amount > 0 ? `Discount: -₹${parseFloat(order.discount_amount).toFixed(0)}\n` : ''}GST (${order.tax_percentage || 5}%): ₹${parseFloat(order.tax_amount).toFixed(0)}
-━━━━━━━━━━━━━━━
+${order.discount_amount > 0 ? `Discount: -₹${parseFloat(order.discount_amount).toFixed(0)}\n` : ''}━━━━━━━━━━━━━━━
 *TOTAL: ₹${parseFloat(order.total_amount).toFixed(0)}*
 ━━━━━━━━━━━━━━━
 💳 Payment: ${order.payment_method} (${order.payment_status})
@@ -274,7 +272,6 @@ _"Good Food Brings People Together"_
               <h1 className="text-base font-bold leading-tight">{restaurantName}</h1>
               <p className="text-[10px] mt-1 leading-tight">{restaurantAddress}</p>
               <p className="text-[10px]">Ph: {restaurantPhone}</p>
-              {gstNumber && <p className="text-[10px]">GSTIN: {gstNumber}</p>}
             </div>
             
             <div className="border-t border-dashed border-gray-400 my-2" />
@@ -339,10 +336,6 @@ _"Good Food Brings People Together"_
                   <span>-₹{parseFloat(order.discount_amount).toFixed(2)}</span>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span>GST ({order.tax_percentage || 5}%)</span>
-                <span>₹{parseFloat(order.tax_amount).toFixed(2)}</span>
-              </div>
             </div>
 
             <div className="border-t border-double border-gray-600 my-2" />

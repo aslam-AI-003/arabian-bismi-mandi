@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
+import { Loader2 } from 'lucide-react'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import POS from './pages/POS'
@@ -9,9 +10,33 @@ import Reports from './pages/Reports'
 import Settings from './pages/Settings'
 import Offers from './pages/Offers'
 import Login from './pages/Login'
-import { AuthProvider } from './context/AuthContext'
+import { AuthProvider, useAuth } from './context/AuthContext'
 import { CartProvider } from './context/CartContext'
 import { LanguageProvider } from './context/LanguageContext'
+
+function FullScreenLoader() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-dark-primary">
+      <Loader2 className="w-10 h-10 animate-spin text-brand-gold" />
+    </div>
+  )
+}
+
+// Blocks access to everything except /login until a user is signed in
+function RequireAuth({ children }) {
+  const { isAuthenticated, loading } = useAuth()
+  if (loading) return <FullScreenLoader />
+  if (!isAuthenticated) return <Navigate to="/login" replace />
+  return children
+}
+
+// If already signed in, don't show the login page again
+function RedirectIfAuthed({ children }) {
+  const { isAuthenticated, loading } = useAuth()
+  if (loading) return <FullScreenLoader />
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />
+  return children
+}
 
 function App() {
   return (
@@ -43,8 +68,8 @@ function App() {
             }}
           />
           <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/" element={<Layout />}>
+            <Route path="/login" element={<RedirectIfAuthed><Login /></RedirectIfAuthed>} />
+            <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="pos" element={<POS />} />

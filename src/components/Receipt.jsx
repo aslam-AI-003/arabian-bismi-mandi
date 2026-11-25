@@ -65,10 +65,6 @@ const Receipt = forwardRef(({ order, settings = {} }, ref) => {
             <span>-₹{parseFloat(order.discount_amount).toFixed(2)}</span>
           </div>
         )}
-        <div className="flex justify-between">
-          <span>GST ({order.tax_percentage || 5}%)</span>
-          <span>₹{parseFloat(order.tax_amount).toFixed(2)}</span>
-        </div>
         <div className="border-b border-dashed border-gray-400 my-1" />
         <div className="flex justify-between font-bold text-base">
           <span>Total</span>

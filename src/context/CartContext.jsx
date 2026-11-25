@@ -17,8 +17,6 @@ export function CartProvider({ children }) {
   const [paymentMethod, setPaymentMethod] = useState('CASH')
   const [notes, setNotes] = useState('')
 
-  const TAX_PERCENTAGE = 5 // GST 5%
-
   const addItem = useCallback((item) => {
     setItems(prev => {
       const existingIndex = prev.findIndex(
@@ -72,9 +70,9 @@ export function CartProvider({ children }) {
     ? (subtotal * discountValue / 100)
     : (discountType === 'FIXED' ? discountValue : 0)
   
-  const taxableAmount = subtotal - discountAmount
-  const taxAmount = taxableAmount * (TAX_PERCENTAGE / 100)
-  const total = taxableAmount + taxAmount
+  const taxPercentage = 0
+  const taxAmount = 0
+  const total = subtotal - discountAmount
 
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0)
 
@@ -91,7 +89,7 @@ export function CartProvider({ children }) {
     notes,
     subtotal,
     discountAmount,
-    taxPercentage: TAX_PERCENTAGE,
+    taxPercentage,
     taxAmount,
     total,
     itemCount,

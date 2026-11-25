@@ -1,12 +1,19 @@
 /**
  * Thermal Printer Integration for Arabian Bismi Mandi POS
- * 
- * Supports two modes:
+ *
+ * Supports three modes:
  * 1. Silent Print (Option B) - Uses browser's default printer with optimized receipt formatting
  * 2. Web Serial API (Option A) - Direct USB thermal printer connection via ESC/POS commands
- * 
+ * 3. Web Bluetooth API - Direct Bluetooth (BLE) thermal printer connection via ESC/POS commands
+ *
  * ESC/POS is the standard protocol for 58mm/80mm thermal receipt printers
  */
+
+// Common BLE service/characteristic UUIDs used by most cheap ESC/POS
+// Bluetooth thermal printers (the ones sold for mobile billing/POS use).
+const BLE_PRINTER_SERVICE_UUID = '000018f0-0000-1000-8000-00805f9b34fb'
+const BLE_PRINTER_CHARACTERISTIC_UUID = '00002af1-0000-1000-8000-00805f9b34fb'
+const BLE_WRITE_CHUNK_SIZE = 180 // bytes per BLE write (safe for most printers)
 
 // ============================================
 // ESC/POS COMMAND CONSTANTS
@@ -58,12 +65,30 @@ const COMMANDS = {
 let serialPort = null
 let writer = null
 let isConnected = false
+let connectionType = null // 'usb' | 'bluetooth' | null
+let bleDevice = null
+let bleCharacteristic = null
 let printerConfig = {
-  mode: 'silent', // 'silent' | 'serial'
+  mode: 'silent', // 'silent' | 'serial' | 'bluetooth'
   paperWidth: 80,  // 80mm or 58mm
   autoPrint: false,
   openDrawer: false,
   printCopy: 1,
+}
+
+// Tiny pub/sub so the UI (header status badge, Settings page) can react
+// instantly to connect/disconnect, instead of polling forever.
+const listeners = new Set()
+function notifyPrinterStatusChange() {
+  listeners.forEach(fn => fn({ connected: isConnected, type: connectionType }))
+}
+export function onPrinterStatusChange(callback) {
+  listeners.add(callback)
+  return () => listeners.delete(callback)
+}
+
+export function getPrinterConnectionType() {
+  return isConnected ? connectionType : null
 }
 
 // Load config from localStorage
@@ -124,15 +149,18 @@ export async function connectPrinter() {
 
     writer = serialPort.writable.getWriter()
     isConnected = true
-    
+    connectionType = 'usb'
+
     // Initialize the printer
     await sendCommand(COMMANDS.INIT)
-    
+
     savePrinterConfig({ mode: 'serial' })
-    
+    notifyPrinterStatusChange()
+
     return { success: true, message: 'Printer connected successfully!' }
   } catch (error) {
     isConnected = false
+    connectionType = null
     if (error.name === 'NotFoundError') {
       return { success: false, message: 'No printer selected. Please try again.' }
     }
@@ -140,8 +168,74 @@ export async function connectPrinter() {
   }
 }
 
+// ============================================
+// WEB BLUETOOTH API - Direct Printer Connection
+// ============================================
+
 /**
- * Disconnect the printer
+ * Check if Web Bluetooth API is supported
+ */
+export function isBluetoothSupported() {
+  return 'bluetooth' in navigator
+}
+
+/**
+ * Connect to thermal printer via Bluetooth (BLE)
+ */
+export async function connectPrinterBluetooth() {
+  if (!isBluetoothSupported()) {
+    throw new Error('Web Bluetooth is not supported in this browser. Use Chrome on Android/Desktop.')
+  }
+
+  try {
+    // Browser will show a device picker dialog with nearby Bluetooth devices
+    bleDevice = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [BLE_PRINTER_SERVICE_UUID],
+    })
+
+    bleDevice.addEventListener('gattserverdisconnected', () => {
+      isConnected = false
+      connectionType = null
+      bleDevice = null
+      bleCharacteristic = null
+      notifyPrinterStatusChange()
+    })
+
+    const server = await bleDevice.gatt.connect()
+    const service = await server.getPrimaryService(BLE_PRINTER_SERVICE_UUID)
+    bleCharacteristic = await service.getCharacteristic(BLE_PRINTER_CHARACTERISTIC_UUID)
+
+    isConnected = true
+    connectionType = 'bluetooth'
+
+    savePrinterConfig({ mode: 'bluetooth' })
+    notifyPrinterStatusChange()
+
+    return { success: true, message: `Connected to ${bleDevice.name || 'Bluetooth printer'}!` }
+  } catch (error) {
+    isConnected = false
+    connectionType = null
+    if (error.name === 'NotFoundError') {
+      return { success: false, message: 'No printer selected. Please try again.' }
+    }
+    return { success: false, message: `Bluetooth connection failed: ${error.message}` }
+  }
+}
+
+/**
+ * Send raw bytes to a connected Bluetooth printer (chunked — BLE has a small MTU)
+ */
+async function sendBytesBluetooth(bytes) {
+  if (!bleCharacteristic) throw new Error('Printer not connected')
+  for (let i = 0; i < bytes.length; i += BLE_WRITE_CHUNK_SIZE) {
+    const chunk = bytes.slice(i, i + BLE_WRITE_CHUNK_SIZE)
+    await bleCharacteristic.writeValue(chunk)
+  }
+}
+
+/**
+ * Disconnect the printer (USB or Bluetooth, whichever is active)
  */
 export async function disconnectPrinter() {
   try {
@@ -153,18 +247,30 @@ export async function disconnectPrinter() {
       await serialPort.close()
       serialPort = null
     }
+    if (bleDevice?.gatt?.connected) {
+      bleDevice.gatt.disconnect()
+    }
+    bleDevice = null
+    bleCharacteristic = null
     isConnected = false
+    connectionType = null
+    notifyPrinterStatusChange()
     return { success: true }
   } catch (error) {
     isConnected = false
+    connectionType = null
+    notifyPrinterStatusChange()
     return { success: false, message: error.message }
   }
 }
 
 /**
- * Check if printer is connected
+ * Check if printer is connected (USB or Bluetooth)
  */
 export function isPrinterConnected() {
+  if (connectionType === 'bluetooth') {
+    return isConnected && !!bleDevice?.gatt?.connected
+  }
   return isConnected && serialPort !== null
 }
 
@@ -296,8 +402,6 @@ function generateReceiptBytes(order, settings = {}) {
     addText(formatRow('Discount', `-Rs.${parseFloat(order.discount_amount).toFixed(2)}`))
   }
   
-  addText(formatRow(`GST (${order.tax_percentage || 5}%)`, `Rs.${parseFloat(order.tax_amount).toFixed(2)}`))
-  
   addDashLine()
   
   // Grand Total
@@ -359,6 +463,28 @@ export async function printReceiptSerial(order, settings = {}) {
 }
 
 /**
+ * Print receipt via Web Bluetooth API (Direct ESC/POS)
+ */
+export async function printReceiptBluetooth(order, settings = {}) {
+  if (!isPrinterConnected()) {
+    throw new Error('Printer not connected. Please connect a Bluetooth printer first.')
+  }
+
+  try {
+    const receiptData = generateReceiptBytes(order, settings)
+    await sendBytesBluetooth(receiptData)
+
+    if (printerConfig.openDrawer) {
+      await sendBytesBluetooth(new Uint8Array(COMMANDS.OPEN_DRAWER))
+    }
+
+    return { success: true, message: 'Receipt printed!' }
+  } catch (error) {
+    return { success: false, message: `Print failed: ${error.message}` }
+  }
+}
+
+/**
  * Print receipt via Silent Browser Print (Option B)
  * Opens a minimal print window optimized for thermal printers
  */
@@ -366,7 +492,6 @@ export function printReceiptSilent(order, settings = {}) {
   const restaurantName = settings.restaurant_name || 'Arabian Bismi Mandi Restaurant'
   const restaurantAddress = settings.restaurant_address || 'Near Kovilady Bus Stand, Main Road, Chakkarapalli'
   const restaurantPhone = settings.restaurant_phone || '9894092449 | 9025499668'
-  const gstNumber = settings.gst_number || ''
   const paperWidth = printerConfig.paperWidth === 58 ? '58mm' : '80mm'
 
   const orderDate = new Date(order.created_at)
@@ -449,7 +574,6 @@ export function printReceiptSilent(order, settings = {}) {
         <h1 class="bold">${restaurantName}</h1>
         <p>${restaurantAddress}</p>
         <p>Ph: ${restaurantPhone}</p>
-        ${gstNumber ? `<p>GSTIN: ${gstNumber}</p>` : ''}
       </div>
       
       <hr class="divider" />
@@ -495,10 +619,6 @@ export function printReceiptSilent(order, settings = {}) {
           <span>-₹${parseFloat(order.discount_amount).toFixed(2)}</span>
         </div>
         ` : ''}
-        <div class="row">
-          <span>GST (${order.tax_percentage || 5}%)</span>
-          <span>₹${parseFloat(order.tax_amount).toFixed(2)}</span>
-        </div>
         <hr class="double-divider" />
         <div class="row total-row">
           <span>TOTAL</span>
@@ -552,9 +672,11 @@ export function printReceiptSilent(order, settings = {}) {
  */
 export async function printReceipt(order, settings = {}) {
   const config = loadPrinterConfig()
-  
+
   if (config.mode === 'serial' && isPrinterConnected()) {
     return await printReceiptSerial(order, settings)
+  } else if (config.mode === 'bluetooth' && isPrinterConnected()) {
+    return await printReceiptBluetooth(order, settings)
   } else {
     return printReceiptSilent(order, settings)
   }
@@ -573,9 +695,9 @@ export async function printTestPage() {
     created_at: new Date().toISOString(),
     subtotal: 500,
     discount_amount: 0,
-    tax_percentage: 5,
-    tax_amount: 25,
-    total_amount: 525,
+    tax_percentage: 0,
+    tax_amount: 0,
+    total_amount: 500,
     payment_method: 'CASH',
     payment_status: 'PAID',
     order_items: [

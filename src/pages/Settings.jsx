@@ -1,16 +1,20 @@
 import { useState, useEffect } from 'react'
-import { 
-  Printer, Usb, Wifi, WifiOff, Settings2, TestTube, 
+import {
+  Printer, Usb, WifiOff, Settings2, TestTube, Bluetooth,
   Loader2, Save, CheckCircle2, AlertCircle, Languages,
-  Store, Phone, MapPin, Receipt, IndianRupee
+  Store, Phone, MapPin
 } from 'lucide-react'
 import { useLanguage } from '../context/LanguageContext'
 import { getSettings, supabase } from '../lib/supabase'
 import {
   isSerialSupported,
+  isBluetoothSupported,
   connectPrinter,
+  connectPrinterBluetooth,
   disconnectPrinter,
   isPrinterConnected,
+  getPrinterConnectionType,
+  onPrinterStatusChange,
   loadPrinterConfig,
   savePrinterConfig,
   printTestPage,
@@ -22,8 +26,11 @@ export default function Settings() {
   
   // Printer state
   const [printerConnected, setPrinterConnected] = useState(false)
+  const [printerConnectionType, setPrinterConnectionType] = useState(null) // 'usb' | 'bluetooth' | null
   const [serialSupported, setSerialSupported] = useState(false)
+  const [bluetoothSupported, setBluetoothSupported] = useState(false)
   const [connecting, setConnecting] = useState(false)
+  const [connectingBt, setConnectingBt] = useState(false)
   const [printerConfig, setPrinterConfig] = useState({
     mode: 'silent',
     paperWidth: 80,
@@ -37,19 +44,26 @@ export default function Settings() {
     restaurant_name: 'Arabian Bismi Mandi Restaurant',
     restaurant_address: 'Near Kovilady Bus Stand, Main Road, Chakkarapalli',
     restaurant_phone: '9894092449 | 9025499668 | 9600827837',
-    tax_percentage: '5',
     currency_symbol: '₹',
-    gst_number: '',
   })
   const [settingsLoading, setSettingsLoading] = useState(true)
   const [savingSettings, setSavingSettings] = useState(false)
 
   useEffect(() => {
     setSerialSupported(isSerialSupported())
+    setBluetoothSupported(isBluetoothSupported())
     setPrinterConnected(isPrinterConnected())
+    setPrinterConnectionType(getPrinterConnectionType())
     const config = loadPrinterConfig()
     setPrinterConfig(config)
     fetchRestaurantSettings()
+
+    // React instantly if printer connects/disconnects (e.g. Bluetooth printer turned off)
+    const unsubscribe = onPrinterStatusChange(({ connected, type }) => {
+      setPrinterConnected(connected)
+      setPrinterConnectionType(type)
+    })
+    return unsubscribe
   }, [])
 
   const fetchRestaurantSettings = async () => {
@@ -102,9 +116,28 @@ export default function Settings() {
     setConnecting(false)
   }
 
+  const handleConnectPrinterBluetooth = async () => {
+    setConnectingBt(true)
+    try {
+      const result = await connectPrinterBluetooth()
+      if (result.success) {
+        setPrinterConnected(true)
+        setPrinterConnectionType('bluetooth')
+        setPrinterConfig(prev => ({ ...prev, mode: 'bluetooth' }))
+        toast.success(result.message)
+      } else {
+        toast.error(result.message)
+      }
+    } catch (error) {
+      toast.error(error.message)
+    }
+    setConnectingBt(false)
+  }
+
   const handleDisconnectPrinter = async () => {
-    const result = await disconnectPrinter()
+    await disconnectPrinter()
     setPrinterConnected(false)
+    setPrinterConnectionType(null)
     setPrinterConfig(prev => ({ ...prev, mode: 'silent' }))
     savePrinterConfig({ mode: 'silent' })
     toast.success(language === 'ta' ? 'பிரிண்டர் துண்டிக்கப்பட்டது' : 'Printer disconnected')
@@ -137,24 +170,26 @@ export default function Settings() {
     connected: language === 'ta' ? 'இணைக்கப்பட்டது' : 'Connected',
     disconnected: language === 'ta' ? 'இணைக்கப்படவில்லை' : 'Not Connected',
     connectPrinter: language === 'ta' ? 'USB பிரிண்டர் இணை' : 'Connect USB Printer',
+    connectPrinterBt: language === 'ta' ? 'Bluetooth பிரிண்டர் இணை' : 'Connect Bluetooth Printer',
     disconnectPrinter: language === 'ta' ? 'பிரிண்டர் துண்டி' : 'Disconnect Printer',
     connecting: language === 'ta' ? 'இணைக்கிறது...' : 'Connecting...',
     testPrint: language === 'ta' ? 'டெஸ்ட் பிரிண்ட்' : 'Test Print',
     printMode: language === 'ta' ? 'பிரிண்ட் முறை' : 'Print Mode',
     silentPrint: language === 'ta' ? 'பிரவுசர் பிரிண்ட்' : 'Browser Print',
     serialPrint: language === 'ta' ? 'USB நேரடி பிரிண்ட்' : 'USB Direct Print',
+    bluetoothPrint: language === 'ta' ? 'Bluetooth நேரடி பிரிண்ட்' : 'Bluetooth Direct Print',
     paperWidth: language === 'ta' ? 'தாள் அகலம்' : 'Paper Width',
     autoPrint: language === 'ta' ? 'ஆர்டர் பின் தானியங்கி பிரிண்ட்' : 'Auto-print after order',
     openDrawer: language === 'ta' ? 'பணப்பெட்டி திற' : 'Open cash drawer after print',
     notSupported: language === 'ta' ? 'இந்த பிரவுசரில் USB பிரிண்ட் ஆதரிக்கப்படவில்லை. Chrome அல்லது Edge பயன்படுத்தவும்.' : 'USB Direct Print is not supported in this browser. Use Chrome or Edge.',
+    btNotSupported: language === 'ta' ? 'இந்த பிரவுசரில் Bluetooth பிரிண்ட் ஆதரிக்கப்படவில்லை. Chrome பயன்படுத்தவும்.' : 'Bluetooth Print is not supported in this browser. Use Chrome.',
     browserPrintDesc: language === 'ta' ? 'இயல்பு பிரிண்டருக்கு அனுப்பும்' : 'Sends to default system printer',
     serialPrintDesc: language === 'ta' ? 'USB வழியாக நேரடியாக பிரிண்ட்' : 'Print directly via USB connection',
+    bluetoothPrintDesc: language === 'ta' ? 'Bluetooth வழியாக நேரடியாக பிரிண்ட்' : 'Print directly via Bluetooth connection',
     restaurantSettings: language === 'ta' ? 'உணவகம் அமைப்புகள்' : 'Restaurant Settings',
     restaurantName: language === 'ta' ? 'உணவகம் பெயர்' : 'Restaurant Name',
     restaurantAddress: language === 'ta' ? 'முகவரி' : 'Address',
     restaurantPhone: language === 'ta' ? 'தொலைபேசி' : 'Phone Numbers',
-    taxPercent: language === 'ta' ? 'GST வரி %' : 'GST Tax %',
-    gstNumber: language === 'ta' ? 'GSTIN எண்' : 'GSTIN Number',
     languageSettings: language === 'ta' ? 'மொழி அமைப்புகள்' : 'Language Settings',
     saveSettings: language === 'ta' ? 'சேமி' : 'Save Settings',
     saving: language === 'ta' ? 'சேமிக்கிறது...' : 'Saving...',
@@ -258,36 +293,7 @@ export default function Settings() {
                   className="input"
                 />
               </div>
-              
-              <div>
-                <label className="text-muted text-sm mb-1 block flex items-center gap-1">
-                  <Receipt size={14} /> {labels.gstNumber}
-                </label>
-                <input
-                  type="text"
-                  value={restaurantSettings.gst_number || ''}
-                  onChange={(e) => setRestaurantSettings(prev => ({ ...prev, gst_number: e.target.value }))}
-                  className="input"
-                  placeholder="22AAAAA0000A1Z5"
-                />
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-muted text-sm mb-1 block flex items-center gap-1">
-                  <IndianRupee size={14} /> {labels.taxPercent}
-                </label>
-                <input
-                  type="number"
-                  value={restaurantSettings.tax_percentage}
-                  onChange={(e) => setRestaurantSettings(prev => ({ ...prev, tax_percentage: e.target.value }))}
-                  className="input"
-                  min="0"
-                  max="28"
-                  step="0.5"
-                />
-              </div>
+
               <div>
                 <label className="text-muted text-sm mb-1 block">
                   💱 Currency Symbol
@@ -323,15 +329,19 @@ export default function Settings() {
         </h2>
 
         {/* Printer Status */}
-        <div className={`flex items-center justify-between p-4 rounded-xl mb-6 border-2 ${
-          printerConnected 
-            ? 'bg-green-500/10 border-green-500/30' 
+        <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl mb-6 border-2 ${
+          printerConnected
+            ? 'bg-green-500/10 border-green-500/30'
             : 'bg-dark-primary/50 border-brand-gold/20'
         }`}>
           <div className="flex items-center gap-3">
             {printerConnected ? (
               <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
-                <Wifi className="text-green-400" size={22} />
+                {printerConnectionType === 'bluetooth' ? (
+                  <Bluetooth className="text-green-400" size={22} />
+                ) : (
+                  <Usb className="text-green-400" size={22} />
+                )}
               </div>
             ) : (
               <div className="w-10 h-10 rounded-full bg-muted/20 flex items-center justify-center">
@@ -341,12 +351,14 @@ export default function Settings() {
             <div>
               <p className="text-cream font-medium">{labels.printerStatus}</p>
               <p className={`text-sm ${printerConnected ? 'text-green-400' : 'text-muted'}`}>
-                {printerConnected ? `✅ ${labels.connected} (USB ESC/POS)` : `⚪ ${labels.disconnected}`}
+                {printerConnected
+                  ? `✅ ${labels.connected} (${printerConnectionType === 'bluetooth' ? 'Bluetooth' : 'USB'} ESC/POS)`
+                  : `⚪ ${labels.disconnected}`}
               </p>
             </div>
           </div>
-          
-          <div className="flex gap-2">
+
+          <div className="flex flex-wrap gap-2">
             {printerConnected ? (
               <button
                 onClick={handleDisconnectPrinter}
@@ -355,23 +367,42 @@ export default function Settings() {
                 {labels.disconnectPrinter}
               </button>
             ) : (
-              <button
-                onClick={handleConnectPrinter}
-                disabled={connecting || !serialSupported}
-                className="px-4 py-2 rounded-lg bg-brand-gold text-dark-primary font-semibold hover:bg-brand-gold-light transition-all text-sm disabled:opacity-50 flex items-center gap-2"
-              >
-                {connecting ? (
-                  <>
-                    <Loader2 className="animate-spin" size={16} />
-                    {labels.connecting}
-                  </>
-                ) : (
-                  <>
-                    <Usb size={16} />
-                    {labels.connectPrinter}
-                  </>
-                )}
-              </button>
+              <>
+                <button
+                  onClick={handleConnectPrinter}
+                  disabled={connecting || !serialSupported}
+                  className="px-4 py-2 rounded-lg bg-brand-gold text-dark-primary font-semibold hover:bg-brand-gold-light transition-all text-sm disabled:opacity-50 flex items-center gap-2"
+                >
+                  {connecting ? (
+                    <>
+                      <Loader2 className="animate-spin" size={16} />
+                      {labels.connecting}
+                    </>
+                  ) : (
+                    <>
+                      <Usb size={16} />
+                      {labels.connectPrinter}
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={handleConnectPrinterBluetooth}
+                  disabled={connectingBt || !bluetoothSupported}
+                  className="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-500 transition-all text-sm disabled:opacity-50 flex items-center gap-2"
+                >
+                  {connectingBt ? (
+                    <>
+                      <Loader2 className="animate-spin" size={16} />
+                      {labels.connecting}
+                    </>
+                  ) : (
+                    <>
+                      <Bluetooth size={16} />
+                      {labels.connectPrinterBt}
+                    </>
+                  )}
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -384,10 +415,21 @@ export default function Settings() {
               <p className="text-yellow-400 font-medium text-sm">USB Direct Print Not Available</p>
               <p className="text-muted text-xs mt-1">{labels.notSupported}</p>
               <p className="text-muted text-xs mt-1">
-                {language === 'ta' 
-                  ? 'பிரவுசர் பிரிண்ட் முறை இன்னும் வேலை செய்யும்!' 
+                {language === 'ta'
+                  ? 'பிரவுசர் பிரிண்ட் முறை இன்னும் வேலை செய்யும்!'
                   : 'Browser Print mode will still work fine!'}
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* Web Bluetooth Not Supported Warning */}
+        {!bluetoothSupported && (
+          <div className="flex items-start gap-3 p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/30 mb-6">
+            <AlertCircle className="text-yellow-400 mt-0.5 shrink-0" size={20} />
+            <div>
+              <p className="text-yellow-400 font-medium text-sm">Bluetooth Direct Print Not Available</p>
+              <p className="text-muted text-xs mt-1">{labels.btNotSupported}</p>
             </div>
           </div>
         )}
@@ -395,7 +437,7 @@ export default function Settings() {
         {/* Print Mode Selection */}
         <div className="mb-6">
           <label className="text-muted text-sm mb-3 block">{labels.printMode}</label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <button
               onClick={() => handleConfigChange('mode', 'silent')}
               className={`flex items-start gap-3 p-4 rounded-xl border-2 transition-all text-left ${
@@ -411,13 +453,13 @@ export default function Settings() {
               </div>
               {printerConfig.mode === 'silent' && <CheckCircle2 className="text-brand-gold ml-auto mt-0.5" size={18} />}
             </button>
-            
+
             <button
               onClick={() => {
-                if (printerConnected) {
+                if (printerConnected && printerConnectionType === 'usb') {
                   handleConfigChange('mode', 'serial')
                 } else {
-                  toast.error(language === 'ta' ? 'முதலில் பிரிண்டர் இணைக்கவும்' : 'Connect a USB printer first')
+                  toast.error(language === 'ta' ? 'முதலில் USB பிரிண்டர் இணைக்கவும்' : 'Connect a USB printer first')
                 }
               }}
               className={`flex items-start gap-3 p-4 rounded-xl border-2 transition-all text-left ${
@@ -433,6 +475,29 @@ export default function Settings() {
                 <p className="text-muted text-xs mt-1">{labels.serialPrintDesc}</p>
               </div>
               {printerConfig.mode === 'serial' && <CheckCircle2 className="text-green-400 ml-auto mt-0.5" size={18} />}
+            </button>
+
+            <button
+              onClick={() => {
+                if (printerConnected && printerConnectionType === 'bluetooth') {
+                  handleConfigChange('mode', 'bluetooth')
+                } else {
+                  toast.error(language === 'ta' ? 'முதலில் Bluetooth பிரிண்டர் இணைக்கவும்' : 'Connect a Bluetooth printer first')
+                }
+              }}
+              className={`flex items-start gap-3 p-4 rounded-xl border-2 transition-all text-left ${
+                printerConfig.mode === 'bluetooth'
+                  ? 'border-blue-500 bg-blue-500/10'
+                  : 'border-brand-gold/20 hover:border-brand-gold/40'
+              } ${!bluetoothSupported ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={!bluetoothSupported}
+            >
+              <Bluetooth className={`mt-0.5 ${printerConfig.mode === 'bluetooth' ? 'text-blue-400' : 'text-muted'}`} size={22} />
+              <div>
+                <p className="text-cream font-medium">{labels.bluetoothPrint}</p>
+                <p className="text-muted text-xs mt-1">{labels.bluetoothPrintDesc}</p>
+              </div>
+              {printerConfig.mode === 'bluetooth' && <CheckCircle2 className="text-blue-400 ml-auto mt-0.5" size={18} />}
             </button>
           </div>
         </div>

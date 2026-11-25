@@ -237,7 +237,6 @@ export default function Reports() {
             <h2>Sales Summary</h2>
             <div class="row"><span>Gross Sales</span><span>₹${stats.grossSales.toFixed(2)}</span></div>
             <div class="row" style="color: green;"><span>Discount</span><span>-₹${stats.totalDiscount.toFixed(2)}</span></div>
-            <div class="row"><span>GST/Tax</span><span>₹${stats.totalTax.toFixed(2)}</span></div>
             <div class="row total-row"><span>Net Sales</span><span>₹${stats.netSales.toFixed(2)}</span></div>
           </div>
 
@@ -377,7 +376,6 @@ export default function Reports() {
       const salesData = [
         ['Gross Sales', `Rs. ${stats.grossSales.toFixed(2)}`],
         ['Discount', `-Rs. ${stats.totalDiscount.toFixed(2)}`],
-        ['GST/Tax', `Rs. ${stats.totalTax.toFixed(2)}`],
       ]
       salesData.forEach(([label, value]) => {
         pdf.text(label, margin, y)
@@ -738,10 +736,6 @@ export default function Reports() {
               <div className="flex justify-between text-green-400">
                 <span>{t('discount')}</span>
                 <span className="font-mono">-₹{stats.totalDiscount.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-muted">
-                <span>{t('gst')} (Tax)</span>
-                <span className="font-mono">₹{stats.totalTax.toFixed(2)}</span>
               </div>
               <div className="border-t border-brand-gold/20 pt-3 flex justify-between text-brand-gold">
                 <span className="font-bold text-lg">{language === 'ta' ? 'நிகர விற்பனை' : 'Net Sales'}</span>

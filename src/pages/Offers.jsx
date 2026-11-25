@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react'
 import {
   Gift, Plus, Trash2, Edit3, MessageCircle, Users, Calendar,
   Percent, IndianRupee, Loader2, X, Send, CheckSquare, Square,
-  Search, Clock, Tag, Phone
+  Search, Clock, Tag, Phone, Image as ImageIcon, Upload
 } from 'lucide-react'
-import { getOffers, createOffer, updateOffer, deleteOffer, getCustomers } from '../lib/supabase'
+import { getOffers, createOffer, updateOffer, deleteOffer, getCustomers, uploadOfferImage } from '../lib/supabase'
 import { useLanguage } from '../context/LanguageContext'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
@@ -21,6 +21,7 @@ export default function Offers() {
   const [activeTab, setActiveTab] = useState('offers') // 'offers' | 'customers'
   const [sending, setSending] = useState(false)
   const [selectedOffer, setSelectedOffer] = useState(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
 
   // Form state
   const [form, setForm] = useState({
@@ -31,6 +32,7 @@ export default function Offers() {
     valid_from: new Date().toISOString().split('T')[0],
     valid_until: '',
     is_active: true,
+    image_url: '',
   })
 
   useEffect(() => {
@@ -57,6 +59,7 @@ export default function Offers() {
       valid_from: new Date().toISOString().split('T')[0],
       valid_until: '',
       is_active: true,
+      image_url: '',
     })
     setEditingOffer(null)
     setShowForm(false)
@@ -85,6 +88,33 @@ export default function Offers() {
     }
   }
 
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      toast.error(language === 'ta' ? 'படக் கோப்பு மட்டும் தேர்வு செய்யவும்' : 'Please select an image file')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error(language === 'ta' ? 'படம் 5MB க்கு குறைவாக இருக்க வேண்டும்' : 'Image must be under 5MB')
+      return
+    }
+
+    setUploadingImage(true)
+    const { data, error } = await uploadOfferImage(file)
+    setUploadingImage(false)
+
+    if (error) {
+      toast.error(
+        (language === 'ta' ? 'படம் பதிவேற்றம் தோல்வி: ' : 'Image upload failed: ') + error.message
+      )
+      return
+    }
+    setForm(prev => ({ ...prev, image_url: data.publicUrl }))
+    toast.success(language === 'ta' ? 'படம் பதிவேற்றப்பட்டது!' : 'Image uploaded!')
+  }
+
   const handleEdit = (offer) => {
     setForm({
       title: offer.title,
@@ -94,6 +124,7 @@ export default function Offers() {
       valid_from: offer.valid_from ? offer.valid_from.split('T')[0] : '',
       valid_until: offer.valid_until ? offer.valid_until.split('T')[0] : '',
       is_active: offer.is_active,
+      image_url: offer.image_url || '',
     })
     setEditingOffer(offer)
     setShowForm(true)
@@ -165,7 +196,7 @@ ${offer.description ? `\n${offer.description}\n` : ''}
 ${validDates}
 📍 Near Kovilady Bus Stand, Chakkarapalli
 📞 9894092449 | 9025499668
-
+${offer.image_url ? `\n📸 ${offer.image_url}\n` : ''}
 Visit us today! 🙏
 _"Good Food Brings People Together"_
     `.trim()
@@ -203,6 +234,38 @@ _"Good Food Brings People Together"_
           )
         }
       }, index * 1500) // 1.5 sec delay between each
+    })
+  }
+
+  // One-click: send this offer to every known customer, no manual selection needed
+  const sendToAllCustomers = (offer) => {
+    if (customers.length === 0) {
+      toast.error(language === 'ta' ? 'வாடிக்கையாளர்கள் இல்லை' : 'No customers found yet')
+      return
+    }
+    if (!confirm(
+      language === 'ta'
+        ? `${customers.length} வாடிக்கையாளர்களுக்கும் WhatsApp அனுப்பப்போகிறது. ஒவ்வொருவருக்கும் ஒரு WhatsApp tab திறக்கும் — ஒவ்வொன்றிலும் Send பொத்தானை அழுத்த வேண்டும். தொடரவா?`
+        : `This will open a WhatsApp chat for all ${customers.length} customers, one by one. You'll need to tap Send in each chat. Continue?`
+    )) return
+
+    setSelectedOffer(offer)
+    setSelectedCustomers(customers.map(c => c.customer_phone))
+    setActiveTab('customers')
+
+    setSending(true)
+    let count = 0
+    customers.forEach((c, index) => {
+      setTimeout(() => {
+        sendToCustomer(c.customer_phone, offer)
+        count++
+        if (count === customers.length) {
+          setSending(false)
+          toast.success(
+            language === 'ta' ? `${count} பேருக்கும் திறக்கப்பட்டது!` : `Opened WhatsApp for all ${count} customers!`
+          )
+        }
+      }, index * 1500)
     })
   }
 
@@ -335,6 +398,15 @@ _"Good Food Brings People Together"_
                     </span>
                   </div>
 
+                  {/* Image */}
+                  {offer.image_url && (
+                    <img
+                      src={offer.image_url}
+                      alt={offer.title}
+                      className="w-full h-32 object-cover rounded-lg mb-3"
+                    />
+                  )}
+
                   {/* Title & Description */}
                   <h3 className="text-cream font-bold text-base mb-1">{offer.title}</h3>
                   {offer.description && (
@@ -386,6 +458,16 @@ _"Good Food Brings People Together"_
                       <Trash2 size={14} />
                     </button>
                   </div>
+
+                  {/* One-click: send to every customer */}
+                  <button
+                    onClick={() => sendToAllCustomers(offer)}
+                    disabled={sending || customers.length === 0}
+                    className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold bg-brand-gold text-dark-primary hover:bg-brand-gold/90 transition-all disabled:opacity-50"
+                  >
+                    {sending ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />}
+                    {l.sendToAll} ({customers.length})
+                  </button>
                 </div>
               ))}
             </div>
@@ -596,6 +678,47 @@ _"Good Food Brings People Together"_
                   rows={3}
                   placeholder="e.g., Buy 2 Chicken Mandi, Get 1 FREE!"
                 />
+              </div>
+
+              <div>
+                <label className="text-muted text-sm mb-1 block flex items-center gap-1">
+                  <ImageIcon size={14} /> {language === 'ta' ? 'சலுகை படம்' : 'Offer Image'}
+                </label>
+                {form.image_url ? (
+                  <div className="relative">
+                    <img src={form.image_url} alt="Offer" className="w-full h-36 object-cover rounded-lg" />
+                    <button
+                      type="button"
+                      onClick={() => setForm(prev => ({ ...prev, image_url: '' }))}
+                      className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-brand-gold/30 rounded-lg h-28 cursor-pointer hover:border-brand-gold/60 transition-all">
+                    {uploadingImage ? (
+                      <>
+                        <Loader2 className="animate-spin text-brand-gold" size={22} />
+                        <span className="text-muted text-xs">{language === 'ta' ? 'பதிவேற்றுகிறது...' : 'Uploading...'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="text-muted" size={22} />
+                        <span className="text-muted text-xs">
+                          {language === 'ta' ? 'படத்தை பதிவேற்ற கிளிக் செய்யவும்' : 'Click to upload an image'}
+                        </span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      disabled={uploadingImage}
+                      className="hidden"
+                    />
+                  </label>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">

@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { signIn } from '../lib/supabase'
+import { signInWithPhone } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { Loader2 } from 'lucide-react'
 
 export default function Login() {
-  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
@@ -14,8 +14,8 @@ export default function Login() {
     e.preventDefault()
     setLoading(true)
 
-    const { error } = await signIn(email, password)
-    
+    const { error } = await signInWithPhone(phone, password)
+
     if (error) {
       toast.error(error.message || 'Login failed')
       setLoading(false)
@@ -23,11 +23,6 @@ export default function Login() {
     }
 
     toast.success('Welcome back!')
-    navigate('/dashboard')
-  }
-
-  // For demo, allow bypass
-  const handleDemo = () => {
     navigate('/dashboard')
   }
 
@@ -47,20 +42,20 @@ export default function Login() {
         {/* Login Form */}
         <div className="card p-8">
           <h2 className="text-xl font-semibold text-cream text-center mb-6">Welcome Back</h2>
-          
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-muted text-sm mb-2">Email</label>
+              <label className="block text-muted text-sm mb-2">Mobile Number</label>
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
                 className="input"
-                placeholder="Enter your email"
+                placeholder="e.g. 9894092449"
                 required
               />
             </div>
-            
+
             <div>
               <label className="block text-muted text-sm mb-2">Password</label>
               <input
@@ -82,15 +77,6 @@ export default function Login() {
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
-
-          <div className="mt-6 pt-6 border-t border-brand-gold/20">
-            <button
-              onClick={handleDemo}
-              className="btn-secondary w-full"
-            >
-              Continue as Demo
-            </button>
-          </div>
         </div>
 
         {/* Footer */}

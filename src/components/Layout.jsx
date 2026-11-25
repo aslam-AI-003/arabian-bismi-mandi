@@ -1,9 +1,9 @@
-import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { 
-  LayoutDashboard, 
-  ShoppingCart, 
-  ClipboardList, 
-  BarChart3, 
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
+import {
+  LayoutDashboard,
+  ShoppingCart,
+  ClipboardList,
+  BarChart3,
   UtensilsCrossed,
   Settings,
   LogOut,
@@ -11,18 +11,93 @@ import {
   X,
   Gift,
   Languages,
-  Calculator
+  Calculator,
+  Wifi,
+  WifiOff,
+  Usb,
+  Bluetooth,
+  Printer as PrinterIcon,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
 import { useLanguage } from '../context/LanguageContext'
+import { isPrinterConnected, getPrinterConnectionType, onPrinterStatusChange } from '../lib/thermalPrinter'
+import { signOut } from '../lib/supabase'
+import toast from 'react-hot-toast'
 // Import the logo
 import bismiLogo from '../assets/Bismi_Logo.jpg'
+
+function useOnlineStatus() {
+  const [online, setOnline] = useState(navigator.onLine)
+  useEffect(() => {
+    const goOnline = () => setOnline(true)
+    const goOffline = () => setOnline(false)
+    window.addEventListener('online', goOnline)
+    window.addEventListener('offline', goOffline)
+    return () => {
+      window.removeEventListener('online', goOnline)
+      window.removeEventListener('offline', goOffline)
+    }
+  }, [])
+  return online
+}
+
+function usePrinterStatus() {
+  const [status, setStatus] = useState({ connected: isPrinterConnected(), type: getPrinterConnectionType() })
+  useEffect(() => {
+    return onPrinterStatusChange(({ connected, type }) => setStatus({ connected, type }))
+  }, [])
+  return status
+}
+
+function StatusBadges() {
+  const online = useOnlineStatus()
+  const printer = usePrinterStatus()
+
+  return (
+    <div className="flex items-center gap-2">
+      {/* WiFi / Network status */}
+      <span
+        title={online ? 'Online' : 'Offline — no internet connection'}
+        className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+          online ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'
+        }`}
+      >
+        {online ? <Wifi size={14} /> : <WifiOff size={14} />}
+        <span className="hidden sm:inline">{online ? 'Online' : 'Offline'}</span>
+      </span>
+
+      {/* Printer status */}
+      <span
+        title={printer.connected ? `Printer connected (${printer.type === 'bluetooth' ? 'Bluetooth' : 'USB'})` : 'Printer not connected'}
+        className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+          printer.connected ? 'bg-green-500/15 text-green-400' : 'bg-muted/15 text-muted'
+        }`}
+      >
+        {printer.connected ? (
+          printer.type === 'bluetooth' ? <Bluetooth size={14} /> : <Usb size={14} />
+        ) : (
+          <PrinterIcon size={14} />
+        )}
+        <span className="hidden sm:inline">
+          {printer.connected ? 'Printer Connected' : 'Printer Offline'}
+        </span>
+      </span>
+    </div>
+  )
+}
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
+  const navigate = useNavigate()
   const { language, toggleLanguage, t } = useLanguage()
+
+  const handleLogout = async () => {
+    await signOut()
+    toast.success(language === 'ta' ? 'வெளியேறியது' : 'Logged out')
+    navigate('/login')
+  }
 
   const navItems = [
     { path: '/dashboard', icon: LayoutDashboard, labelKey: 'dashboard' },
@@ -75,14 +150,17 @@ export default function Layout() {
             />
             <h1 className="text-brand-gold font-decorative text-lg">Arabian Bismi</h1>
           </div>
-          {/* Mobile Language Toggle */}
-          <button 
-            onClick={toggleLanguage}
-            className="p-2 text-cream hover:text-brand-gold flex items-center gap-1"
-          >
-            <Languages size={18} />
-            <span className="text-xs font-medium">{language === 'en' ? 'த' : 'En'}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <StatusBadges />
+            {/* Mobile Language Toggle */}
+            <button
+              onClick={toggleLanguage}
+              className="p-2 text-cream hover:text-brand-gold flex items-center gap-1"
+            >
+              <Languages size={18} />
+              <span className="text-xs font-medium">{language === 'en' ? 'த' : 'En'}</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -143,7 +221,10 @@ export default function Layout() {
 
         {/* Logout */}
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-brand-gold/20">
-          <button className="nav-link w-full text-red-400 hover:text-red-300 hover:bg-red-500/10">
+          <button
+            onClick={handleLogout}
+            className="nav-link w-full text-red-400 hover:text-red-300 hover:bg-red-500/10"
+          >
             <LogOut size={20} />
             <span>{t('logout')}</span>
           </button>
@@ -158,8 +239,9 @@ export default function Layout() {
             {t(location.pathname.replace('/', '') || 'dashboard')}
           </h2>
           <div className="flex items-center gap-4">
+            <StatusBadges />
             {/* Language Toggle Button */}
-            <button 
+            <button
               onClick={toggleLanguage}
               className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-brand-gold/30 hover:border-brand-gold/60 hover:bg-brand-gold/10 transition-all"
             >
