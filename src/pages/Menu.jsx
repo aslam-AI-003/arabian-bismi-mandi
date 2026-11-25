@@ -169,7 +169,7 @@ export default function Menu() {
             placeholder="Search menu..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="input-search pl-11"
+            className="input-search" style={{ paddingLeft: "2.75rem" }}
           />
         </div>
         <select

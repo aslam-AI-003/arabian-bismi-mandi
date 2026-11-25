@@ -32,6 +32,11 @@ first-time setup screen.
    It only adds tables/columns, back-fills a payment row for every old paid
    bill, and replaces the open `USING (true)` security policies with role
    checks. It is safe to run again. Every existing login becomes an **admin**.
+   Then run `database/orders_auto_complete_update.sql` the same way. It makes
+   orders complete by themselves once fully paid (no Preparing/Ready steps)
+   and closes old open orders that are already paid.
+   Then run `database/receipt_cash_change_update.sql`. It saves the cash the
+   customer handed over, for the "Cash received / Change" receipt line.
 3. Deploy the app (needs Node 20.19+ to build).
 4. Sign in as an admin. The first-time setup screen appears once: check the
    details and create the tables.

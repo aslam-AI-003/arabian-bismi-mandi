@@ -40,6 +40,9 @@ export default function PaymentModal({ title, due, defaultMethod = 'CASH', onCon
     const clean = rows
       .filter((r) => Number(r.amount) > 0)
       .map((r) => ({ id: r.id, method: r.method, amount: round2(Number(r.amount)), reference: r.reference.trim() }))
+    // Cash handed over -> printed as "Cash received / Change" on the receipt
+    const cash = clean.find((r) => r.method === 'CASH')
+    if (cash && Number(tendered) >= cash.amount) cash.tendered = round2(Number(tendered))
     const err = validatePayments(due, clean)
     if (err) { setError(err); return }
     if (!allowPartial && remaining > 0) { setError(`${t('remaining')}: ₹${remaining.toFixed(2)}`); return }

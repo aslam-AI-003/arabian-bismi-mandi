@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  computeBill, billConfigFromSettings, validatePayments, cashChange, balanceDue, netByMethod, dbErrorMessage,
+  computeBill, billConfigFromSettings, validatePayments, cashChange, balanceDue, netByMethod, dbErrorMessage, receiptExtras, unitLine,
 } from './billing.js'
 import { parseCsv, csvToMenu } from './menuImport.js'
 import { toCsv } from './exporters.js'
@@ -76,4 +76,24 @@ test('CSV menu import parsing', () => {
 test('CSV export escapes quotes and blocks formula injection', () => {
   const csv = toCsv([{ name: 'S', columns: [{ key: 'a', label: 'A' }, { key: 'b', label: 'B' }], rows: [{ a: '=HYPERLINK("x")', b: -5 }, { a: 'x,"y"', b: 1.5 }] }])
   assert.equal(csv, 'A,B\r\n"\'=HYPERLINK(""x"")",-5\r\n"x,""y""",1.5\r\n')
+})
+
+test('receipt lines: bill no, cashier, per-payment lines with cash received / change', () => {
+  const r = receiptExtras({
+    order_number: 'ORD-261125-001', created_by_name: 'Kumar', order_type: 'DINE_IN', total_amount: '273', paid_amount: '273',
+    payment_status: 'PAID', created_at: '2026-11-25T13:22:00Z',
+    payments: [
+      { kind: 'PAYMENT', method: 'CASH', amount: '200', tendered: '500', change_given: '300' },
+      { kind: 'PAYMENT', method: 'UPI', amount: '73', reference: 'TXN9' },
+    ],
+  })
+  assert.equal(r.billNo, 'ORD-261125-001')
+  assert.equal(r.cashier, 'Kumar')
+  assert.equal(r.typeLabel, 'Dine-in')
+  assert.deepEqual(r.paymentLines, [
+    { label: 'Paid - CASH', amount: 200, note: 'Cash received ₹500.00 / Change ₹300.00' },
+    { label: 'Paid - UPI', amount: 73, note: 'Ref: TXN9' },
+  ])
+  assert.equal(unitLine({ quantity: 2, unit_price: '20' }), '2 x ₹20.00')
+  assert.equal(unitLine({ quantity: 1, unit_price: '20' }), '')
 })

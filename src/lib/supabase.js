@@ -541,3 +541,28 @@ export const updateStaff = (userId, name, role, active) =>
 
 export const setStaffPassword = (userId, password) =>
   rpc('admin_set_staff_password', { p_user_id: userId, p_password: password })
+
+const OPEN_STATUSES = ['PENDING', 'PREPARING', 'READY']
+
+/**
+ * Orders for the Orders page tabs.
+ * active: open, nothing paid · pending: open, part paid ·
+ * completed / cancelled: created between from and to (ISO strings).
+ */
+export const getOrdersForTab = async (tab, from, to) => {
+  let query = supabase
+    .from('orders')
+    .select('*, order_items(*), payments:pos_payments(*)')
+    .order('created_at', { ascending: false })
+  if (tab === 'active') query = query.in('order_status', OPEN_STATUSES).eq('paid_amount', 0)
+  else if (tab === 'pending') query = query.in('order_status', OPEN_STATUSES).gt('paid_amount', 0)
+  else {
+    query = query
+      .eq('order_status', tab === 'cancelled' ? 'CANCELLED' : 'COMPLETED')
+      .gte('created_at', from)
+      .lte('created_at', to)
+  }
+  const { data, error } = await query.limit(1000)
+  data?.forEach((o) => o.order_items?.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)))
+  return { data, error }
+}

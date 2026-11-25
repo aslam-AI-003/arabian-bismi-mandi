@@ -1,4 +1,4 @@
-import { receiptExtras } from './billing'
+import { receiptExtras, unitLine } from './billing'
 /**
  * Thermal Printer Integration for Arabian Bismi Mandi POS
  *
@@ -357,26 +357,21 @@ function generateReceiptBytes(order, settings = {}) {
   const orderDate = new Date(order.created_at)
   const dateStr = orderDate.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: '2-digit' })
   const timeStr = orderDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
-  addText(formatRow(`Order: ${order.order_number}`, `${dateStr} ${timeStr}`))
+  const info = receiptExtras(order)
+  addText(formatRow('Bill No', order.order_number))
   addCmd(COMMANDS.BOLD_OFF)
-  
-  const orderType = order.order_type?.replace('_', ' ') || ''
-  const tableInfo = order.table_number ? `Table: ${order.table_number}` : ''
-  addText(formatRow(orderType, tableInfo))
-  
-  // Customer info
-  if (order.customer_name) {
-    addText(`Customer: ${order.customer_name}`)
-  }
-  if (order.customer_phone) {
-    addText(`Phone: ${order.customer_phone}`)
-  }
+  addText(formatRow('Date', `${dateStr} ${timeStr}`))
+  addText(formatRow('Type', info.typeLabel))
+  if (order.table_number) addText(formatRow('Table', String(order.table_number)))
+  if (info.cashier) addText(formatRow('Cashier', info.cashier))
+  if (order.customer_name) addText(formatRow('Customer', order.customer_name))
+  if (order.customer_phone) addText(formatRow('Phone', order.customer_phone))
   
   addLine()
   
   // Items Header
   addCmd(COMMANDS.BOLD_ON)
-  addText(formatRow3('Item', 'Qty', 'Amount'))
+  addText(formatRow3('ITEM', 'QTY', 'PRICE'))
   addCmd(COMMANDS.BOLD_OFF)
   addLine()
   
@@ -392,6 +387,7 @@ function generateReceiptBytes(order, settings = {}) {
     } else {
       addText(formatRow3(itemName, qty, price))
     }
+    if (unitLine(item)) addText(`  ${unitLine(item).replace('₹', 'Rs.')}`)
   })
   
   addLine()
@@ -412,23 +408,23 @@ function generateReceiptBytes(order, settings = {}) {
   // Grand Total
   addCmd(COMMANDS.BOLD_ON)
   addCmd(COMMANDS.DOUBLE_HEIGHT_ON)
-  addText(formatRow('TOTAL', `Rs.${parseFloat(order.total_amount).toFixed(2)}`))
+  addText(formatRow('GRAND TOTAL', `Rs.${parseFloat(order.total_amount).toFixed(2)}`))
   addCmd(COMMANDS.NORMAL_SIZE)
   addCmd(COMMANDS.BOLD_OFF)
   
   addDashLine()
   
   // Payment
-  addText(formatRow('Payment', extras.paymentLabel))
-  extras.splitLines.forEach((l) => addText(formatRow(`  ${l.label}`, `Rs.${l.amount.toFixed(2)}`)))
-  addText(formatRow('Status', order.payment_status || 'PAID'))
-  if (extras.due > 0) {
-    addText(formatRow('Paid', `Rs.${extras.paid.toFixed(2)}`))
-    addCmd(COMMANDS.BOLD_ON)
-    addText(formatRow('BALANCE DUE', `Rs.${extras.due.toFixed(2)}`))
-    addCmd(COMMANDS.BOLD_OFF)
-  }
-  if (extras.refunded > 0) addText(formatRow('Refunded', `Rs.${extras.refunded.toFixed(2)}`))
+  extras.paymentLines.forEach((l) => {
+    addText(formatRow(l.label, `Rs.${l.amount.toFixed(2)}`))
+    if (l.note) addText(`  ${l.note.replace(/₹/g, 'Rs.')}`)
+  })
+  if (extras.paymentLines.length === 0 && order.payment_status !== 'PENDING') addText(formatRow('Payment', extras.paymentLabel))
+  if (extras.refunded > 0) addText(formatRow('Refunded', `-Rs.${extras.refunded.toFixed(2)}`))
+  addCmd(COMMANDS.BOLD_ON)
+  addText(formatRow('Payment status', { PAID: 'Paid', PARTIAL: 'Partially paid', PENDING: 'Pending', REFUNDED: 'Refunded' }[order.payment_status] || order.payment_status || 'Paid'))
+  if (extras.due > 0) addText(formatRow('BALANCE DUE', `Rs.${extras.due.toFixed(2)}`))
+  addCmd(COMMANDS.BOLD_OFF)
   
   addLine()
   
@@ -517,9 +513,10 @@ export function printReceiptSilent(order, settings = {}) {
       <td class="item-name">
         ${item.item_name}
         ${item.variant ? `<br><small>(${item.variant})</small>` : ''}
+        ${unitLine(item) ? `<br><small>${unitLine(item)}</small>` : ''}
       </td>
       <td class="qty">${item.quantity}</td>
-      <td class="price">₹${parseFloat(item.total_price).toFixed(0)}</td>
+      <td class="price">₹${parseFloat(item.total_price).toFixed(2)}</td>
     </tr>
   `).join('')
 
@@ -593,16 +590,13 @@ export function printReceiptSilent(order, settings = {}) {
       <hr class="divider" />
       
       <div class="order-info">
-        <div class="row">
-          <span class="bold">${order.order_number}</span>
-          <span>${dateStr} ${timeStr}</span>
-        </div>
-        <div class="row small">
-          <span>${(order.order_type || '').replace('_', ' ')}</span>
-          ${order.table_number ? `<span>Table: ${order.table_number}</span>` : ''}
-        </div>
-        ${order.customer_name ? `<div class="customer-info">Customer: ${order.customer_name}</div>` : ''}
-        ${order.customer_phone ? `<div class="customer-info">Phone: ${order.customer_phone}</div>` : ''}
+        <div class="row bold"><span>Bill No</span><span>${order.order_number}</span></div>
+        <div class="row small"><span>Date</span><span>${dateStr} ${timeStr}</span></div>
+        <div class="row small"><span>Type</span><span>${htmlExtras.typeLabel}</span></div>
+        ${order.table_number ? `<div class="row small"><span>Table</span><span>${order.table_number}</span></div>` : ''}
+        ${htmlExtras.cashier ? `<div class="row small"><span>Cashier</span><span>${htmlExtras.cashier}</span></div>` : ''}
+        ${order.customer_name ? `<div class="row small"><span>Customer</span><span>${order.customer_name}</span></div>` : ''}
+        ${order.customer_phone ? `<div class="row small"><span>Phone</span><span>${order.customer_phone}</span></div>` : ''}
       </div>
       
       <hr class="divider" />
@@ -610,9 +604,9 @@ export function printReceiptSilent(order, settings = {}) {
       <table>
         <thead>
           <tr>
-            <th>Item</th>
-            <th class="qty">Qty</th>
-            <th class="price">Amt</th>
+            <th>ITEM</th>
+            <th class="qty">QTY</th>
+            <th class="price">PRICE</th>
           </tr>
         </thead>
         <tbody>
@@ -637,7 +631,7 @@ export function printReceiptSilent(order, settings = {}) {
         ${htmlExtras.roundOff !== 0 ? `<div class="row"><span>Round off</span><span>${htmlExtras.roundOff > 0 ? '+' : '-'}₹${Math.abs(htmlExtras.roundOff).toFixed(2)}</span></div>` : ''}
         <hr class="double-divider" />
         <div class="row total-row">
-          <span>TOTAL</span>
+          <span>GRAND TOTAL</span>
           <span>₹${parseFloat(order.total_amount).toFixed(2)}</span>
         </div>
       </div>
@@ -645,13 +639,11 @@ export function printReceiptSilent(order, settings = {}) {
       <hr class="divider" />
       
       <div class="order-info">
-        <div class="row small">
-          <span>Payment: ${htmlExtras.paymentLabel}</span>
-          <span>${order.payment_status || 'PAID'}</span>
-        </div>
-        ${htmlExtras.splitLines.map((l) => `<div class="row small"><span>&nbsp;&nbsp;${l.label}</span><span>₹${l.amount.toFixed(2)}</span></div>`).join('')}
-        ${htmlExtras.due > 0 ? `<div class="row small"><span>Paid</span><span>₹${htmlExtras.paid.toFixed(2)}</span></div><div class="row bold"><span>BALANCE DUE</span><span>₹${htmlExtras.due.toFixed(2)}</span></div>` : ''}
-        ${htmlExtras.refunded > 0 ? `<div class="row small"><span>Refunded</span><span>₹${htmlExtras.refunded.toFixed(2)}</span></div>` : ''}
+        ${htmlExtras.paymentLines.map((l) => `<div class="row small"><span>${l.label}</span><span>₹${l.amount.toFixed(2)}</span></div>${l.note ? `<div class="small" style="padding-left:8px">${l.note}</div>` : ''}`).join('')}
+        ${htmlExtras.paymentLines.length === 0 && order.payment_status !== 'PENDING' ? `<div class="row small"><span>Payment</span><span>${htmlExtras.paymentLabel}</span></div>` : ''}
+        ${htmlExtras.refunded > 0 ? `<div class="row small"><span>Refunded</span><span>-₹${htmlExtras.refunded.toFixed(2)}</span></div>` : ''}
+        <div class="row bold"><span>Payment status</span><span>${{ PAID: 'Paid', PARTIAL: 'Partially paid', PENDING: 'Pending', REFUNDED: 'Refunded' }[order.payment_status] || order.payment_status || 'Paid'}</span></div>
+        ${htmlExtras.due > 0 ? `<div class="row bold"><span>BALANCE DUE</span><span>₹${htmlExtras.due.toFixed(2)}</span></div>` : ''}
       </div>
       
       <hr class="divider" />

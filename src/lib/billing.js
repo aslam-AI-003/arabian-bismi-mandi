@@ -126,6 +126,7 @@ const ERRORS = {
   CONFLICT: { en: 'This order was changed on another device. Reload and try again.', ta: 'இந்த ஆர்டர் வேறு சாதனத்தில் மாற்றப்பட்டது. ரீலோட் செய்யவும்.' },
   PAYMENT_EXCEEDS_TOTAL: { en: 'Payments are more than the bill total.', ta: 'செலுத்தும் தொகை பில் தொகையை விட அதிகம்.' },
   ORDER_HAS_PAYMENTS: { en: 'This order already has payments, so items cannot be changed.', ta: 'பணம் செலுத்திய ஆர்டரில் பொருட்களை மாற்ற முடியாது.' },
+  REFUND_FIRST: { en: 'Money has been paid on this order. Refund it first, then cancel.', ta: 'இந்த ஆர்டரில் பணம் செலுத்தப்பட்டுள்ளது. முதலில் திருப்பி கொடுத்து பின் ரத்து செய்யவும்.' },
   LAST_ADMIN: { en: 'Keep at least one active admin.', ta: 'குறைந்தது ஒரு அட்மின் இருக்க வேண்டும்.' },
 }
 
@@ -154,7 +155,23 @@ export function receiptExtras(order = {}) {
   const due = balanceDue(order)
   const refunded = Number(order.refunded_amount) || 0
   const unpaid = order.payment_status === 'PENDING' && Number(order.total_amount) > 0
+  const r2 = (v) => Number(v).toFixed(2)
+  // One line per payment, like SIP N' GOSSIP: "Paid - CASH  200.00"
+  // with "Cash received 500.00 / Change 300.00" under cash payments.
+  const paymentLines = pays.map((p) => ({
+    label: `Paid - ${p.method}`,
+    amount: Number(p.amount) || 0,
+    note: p.method === 'CASH' && Number(p.tendered) > 0
+      ? `Cash received ₹${r2(p.tendered)} / Change ₹${r2(p.change_given || 0)}`
+      : (p.reference ? `Ref: ${p.reference}` : ''),
+  }))
+  const created = order.created_at ? new Date(order.created_at) : null
   return {
+    billNo: order.order_number || '',
+    cashier: order.created_by_name || '',
+    dateTime: created ? created.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '',
+    typeLabel: { DINE_IN: 'Dine-in', TAKEAWAY: 'Takeaway', DELIVERY: 'Delivery' }[order.order_type] || (order.order_type || ''),
+    paymentLines,
     parcel,
     roundOff,
     splitLines: methods.length > 1 ? methods.map(([m, v]) => ({ label: m, amount: v })) : [],
@@ -163,4 +180,10 @@ export function receiptExtras(order = {}) {
     refunded,
     paymentLabel: unpaid ? 'PENDING' : (order.payment_method || 'CASH'),
   }
+}
+
+/** "2 x ₹20.00" under an item when more than one was ordered, else ''. */
+export function unitLine(item) {
+  const q = Number(item.quantity) || 0
+  return q > 1 ? `${q} x ₹${Number(item.unit_price ?? item.price ?? 0).toFixed(2)}` : ''
 }

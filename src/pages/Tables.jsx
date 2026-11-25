@@ -228,8 +228,8 @@ export default function Tables() {
                 </div>
                 <p className="text-muted text-xs">
                   {language === 'ta'
-                    ? 'ஆர்டர் "முடிந்தது" ஆகி முழு பணம் பெற்றவுடன் டேபிள் தானாக காலியாகும்.'
-                    : 'The table frees itself once the order is marked Completed and fully paid.'}
+                    ? 'முழு பணம் பெற்றவுடன் ஆர்டர் முடிந்து டேபிள் தானாக காலியாகும்.'
+                    : 'Once the bill is fully paid, the order completes and the table frees itself.'}
                 </p>
               </div>
             )

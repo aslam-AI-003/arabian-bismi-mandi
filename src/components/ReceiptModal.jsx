@@ -12,7 +12,7 @@ import {
   isPrinterConnected, 
   loadPrinterConfig 
 } from '../lib/thermalPrinter'
-import { receiptExtras } from '../lib/billing'
+import { receiptExtras, unitLine } from '../lib/billing'
 
 export default function ReceiptModal({ order, onClose, settings = {} }) {
   const receiptRef = useRef(null)
@@ -169,7 +169,7 @@ export default function ReceiptModal({ order, onClose, settings = {} }) {
   // Share via WhatsApp
   const handleWhatsAppShare = async () => {
     const itemsList = order.order_items?.map(item => 
-      `• ${item.item_name}${item.variant ? ` (${item.variant})` : ''} x${item.quantity} = ₹${parseFloat(item.total_price).toFixed(0)}`
+      `• ${item.item_name}${item.variant ? ` (${item.variant})` : ''} x${item.quantity} = ₹${parseFloat(item.total_price).toFixed(0)}${unitLine(item) ? ` (${unitLine(item)})` : ''}`
     ).join('\n')
 
     const message = `
@@ -177,10 +177,10 @@ export default function ReceiptModal({ order, onClose, settings = {} }) {
 📍 ${restaurantAddress}
 📞 ${restaurantPhone}
 ━━━━━━━━━━━━━━━
-*Order: ${order.order_number}*
+*Bill No: ${order.order_number}*
 📅 ${format(new Date(order.created_at), 'dd MMM yyyy, hh:mm a')}
 🍽️ ${order.order_type?.replace('_', ' ')}${order.table_number ? ` | Table: ${order.table_number}` : ''}
-${order.customer_name ? `👤 ${order.customer_name}` : ''}
+${extras.cashier ? `🧑‍🍳 Cashier: ${extras.cashier}\n` : ''}${order.customer_name ? `👤 ${order.customer_name}` : ''}
 ${order.customer_phone ? `📱 ${order.customer_phone}` : ''}
 ━━━━━━━━━━━━━━━
 *Items:*
@@ -190,7 +190,8 @@ Subtotal: ₹${parseFloat(order.subtotal).toFixed(0)}
 ${order.discount_amount > 0 ? `Discount: -₹${parseFloat(order.discount_amount).toFixed(0)}\n` : ''}${extras.parcel > 0 ? `Parcel charge: ₹${extras.parcel.toFixed(0)}\n` : ''}${extras.roundOff !== 0 ? `Round off: ${extras.roundOff.toFixed(2)}\n` : ''}━━━━━━━━━━━━━━━
 *TOTAL: ₹${parseFloat(order.total_amount).toFixed(0)}*
 ━━━━━━━━━━━━━━━
-💳 Payment: ${extras.paymentLabel} (${order.payment_status})${extras.splitLines.map((l) => `\n   ${l.label}: ₹${l.amount.toFixed(0)}`).join('')}${extras.due > 0 ? `\n*Balance due: ₹${extras.due.toFixed(0)}*` : ''}
+${extras.paymentLines.length ? extras.paymentLines.map((l) => `💳 ${l.label}: ₹${l.amount.toFixed(2)}${l.note ? `\n   ${l.note}` : ''}`).join('\n') : `💳 Payment: ${extras.paymentLabel}`}
+Payment status: ${order.payment_status}${extras.due > 0 ? `\n*Balance due: ₹${extras.due.toFixed(0)}*` : ''}
 ━━━━━━━━━━━━━━━
 🙏 Thank you for dining with us!
 _"Good Food Brings People Together"_
@@ -278,48 +279,39 @@ _"Good Food Brings People Together"_
             
             <div className="border-t border-dashed border-gray-400 my-2" />
 
-            {/* Order Info */}
-            <div className="mb-2">
-              <div className="flex justify-between text-xs">
-                <span className="font-bold">{order.order_number}</span>
-                <span>{format(new Date(order.created_at), 'dd/MM/yy HH:mm')}</span>
-              </div>
-              <div className="flex justify-between text-[10px] text-gray-600">
-                <span>{order.order_type?.replace('_', ' ')}</span>
-                {order.table_number && <span>Table: {order.table_number}</span>}
-              </div>
-              {/* Customer info */}
-              {order.customer_name && (
-                <div className="text-[10px] text-gray-600 mt-1">
-                  Customer: {order.customer_name}
-                </div>
-              )}
-              {order.customer_phone && (
-                <div className="text-[10px] text-gray-600">
-                  Phone: {order.customer_phone}
-                </div>
-              )}
+            {/* Bill info (SIP N' GOSSIP style) */}
+            <div className="text-[10px] space-y-0.5">
+              <div className="flex justify-between font-bold text-xs"><span>Bill No</span><span>{extras.billNo}</span></div>
+              <div className="flex justify-between"><span>Date</span><span>{extras.dateTime}</span></div>
+              <div className="flex justify-between"><span>Type</span><span>{extras.typeLabel}</span></div>
+              {order.table_number && <div className="flex justify-between"><span>Table</span><span>{order.table_number}</span></div>}
+              {extras.cashier && <div className="flex justify-between"><span>Cashier</span><span>{extras.cashier}</span></div>}
+              {order.customer_name && <div className="flex justify-between"><span>Customer</span><span>{order.customer_name}</span></div>}
+              {order.customer_phone && <div className="flex justify-between"><span>Phone</span><span>{order.customer_phone}</span></div>}
             </div>
 
             <div className="border-t border-dashed border-gray-400 my-2" />
 
             {/* Items Header */}
-            <div className="flex justify-between text-[10px] font-bold mb-1 border-b border-gray-200 pb-1">
-              <span className="flex-1">Item</span>
-              <span className="w-8 text-center">Qty</span>
-              <span className="w-14 text-right">Amount</span>
+            <div className="flex justify-between text-[10px] font-bold mb-1 border-b border-dashed border-gray-400 pb-1">
+              <span className="flex-1">ITEM</span>
+              <span className="w-8 text-center">QTY</span>
+              <span className="w-16 text-right">PRICE</span>
             </div>
 
             {/* Items */}
             <div className="mb-2">
               {order.order_items?.map((item, idx) => (
-                <div key={idx} className="flex justify-between text-[10px] py-0.5">
-                  <span className="flex-1 pr-1 leading-tight">
-                    {item.item_name}
-                    {item.variant && <span className="text-gray-500 block text-[9px]">({item.variant})</span>}
-                  </span>
-                  <span className="w-8 text-center">{item.quantity}</span>
-                  <span className="w-14 text-right">₹{parseFloat(item.total_price).toFixed(0)}</span>
+                <div key={idx} className="text-[10px] py-0.5">
+                  <div className="flex justify-between">
+                    <span className="flex-1 pr-1 leading-tight font-semibold">
+                      {item.item_name}
+                      {item.variant && <span className="font-normal text-gray-600"> ({item.variant})</span>}
+                    </span>
+                    <span className="w-8 text-center">{item.quantity}</span>
+                    <span className="w-16 text-right">₹{parseFloat(item.total_price).toFixed(2)}</span>
+                  </div>
+                  {unitLine(item) && <div className="text-[9px] text-gray-600 pl-2">{unitLine(item)}</div>}
                 </div>
               ))}
             </div>
@@ -333,7 +325,7 @@ _"Good Food Brings People Together"_
                 <span>₹{parseFloat(order.subtotal).toFixed(2)}</span>
               </div>
               {order.discount_amount > 0 && (
-                <div className="flex justify-between text-green-600">
+                <div className="flex justify-between">
                   <span>Discount</span>
                   <span>-₹{parseFloat(order.discount_amount).toFixed(2)}</span>
                 </div>
@@ -352,50 +344,38 @@ _"Good Food Brings People Together"_
               )}
             </div>
 
-            <div className="border-t border-double border-gray-600 my-2" />
+            <div className="border-t border-dashed border-gray-400 my-2" />
 
             {/* Grand Total */}
             <div className="flex justify-between font-bold text-sm">
-              <span>TOTAL</span>
+              <span>GRAND TOTAL</span>
               <span>₹{parseFloat(order.total_amount).toFixed(2)}</span>
             </div>
 
             <div className="border-t border-dashed border-gray-400 my-2" />
 
-            {/* Payment Info */}
+            {/* Payments */}
             <div className="text-[10px] space-y-0.5">
-              <div className="flex justify-between">
-                <span>Payment:</span>
-                <span className="font-semibold">{extras.paymentLabel}</span>
-              </div>
-              {extras.splitLines.map((l) => (
-                <div key={l.label} className="flex justify-between pl-2 text-gray-600">
-                  <span>{l.label}</span>
-                  <span>₹{l.amount.toFixed(2)}</span>
+              {extras.paymentLines.map((l, i) => (
+                <div key={i}>
+                  <div className="flex justify-between"><span>{l.label}</span><span>₹{l.amount.toFixed(2)}</span></div>
+                  {l.note && <div className="text-[9px] text-gray-600 pl-2">{l.note}</div>}
                 </div>
               ))}
-              <div className="flex justify-between">
-                <span>Status:</span>
-                <span className={`font-bold ${order.payment_status === 'PAID' ? 'text-green-600' : 'text-yellow-600'}`}>
-                  {order.payment_status}
-                </span>
-              </div>
-              {extras.due > 0 && (
-                <>
-                  <div className="flex justify-between">
-                    <span>Paid:</span>
-                    <span>₹{extras.paid.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between font-bold text-[11px]">
-                    <span>BALANCE DUE:</span>
-                    <span>₹{extras.due.toFixed(2)}</span>
-                  </div>
-                </>
+              {extras.paymentLines.length === 0 && order.payment_status !== 'PENDING' && (
+                <div className="flex justify-between"><span>Payment</span><span>{extras.paymentLabel}</span></div>
               )}
               {extras.refunded > 0 && (
-                <div className="flex justify-between">
-                  <span>Refunded:</span>
-                  <span>₹{extras.refunded.toFixed(2)}</span>
+                <div className="flex justify-between"><span>Refunded</span><span>-₹{extras.refunded.toFixed(2)}</span></div>
+              )}
+              <div className="flex justify-between font-bold">
+                <span>Payment status</span>
+                <span>{{ PAID: 'Paid', PARTIAL: 'Partially paid', PENDING: 'Pending', REFUNDED: 'Refunded' }[order.payment_status] || order.payment_status}</span>
+              </div>
+              {extras.due > 0 && (
+                <div className="flex justify-between font-bold text-[11px]">
+                  <span>BALANCE DUE</span>
+                  <span>₹{extras.due.toFixed(2)}</span>
                 </div>
               )}
             </div>
