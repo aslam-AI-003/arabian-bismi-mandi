@@ -4,7 +4,11 @@ import {
   CreditCard, Wallet, BarChart3, Calculator, Printer, Download,
   CheckCircle2, XCircle, Clock, FileText
 } from 'lucide-react'
-import { getOrdersByDateRange, supabase } from '../lib/supabase'
+import { getOrdersByDateRange, getPaymentsByDateRange, getExpenses, getPendingBalanceOrders } from '../lib/supabase'
+import { netByMethod, balanceDue } from '../lib/billing'
+import { exportCsv, exportXlsx, exportPdf } from '../lib/exporters'
+import CollectionsReport, { summarizeCollections } from '../components/CollectionsReport'
+import { FileSpreadsheet } from 'lucide-react'
 import { format, subDays, startOfDay, endOfDay } from 'date-fns'
 import toast from 'react-hot-toast'
 import { useLanguage } from '../context/LanguageContext'
@@ -44,6 +48,10 @@ export default function Reports() {
   const { t, language } = useLanguage()
   const reportRef = useRef(null)
   const [generating, setGenerating] = useState(false)
+  // Payment ledger, expenses and pending dues for the Collections tab / exports
+  const [ledger, setLedger] = useState([])
+  const [expenses, setExpenses] = useState([])
+  const [pendingOrders, setPendingOrders] = useState([])
 
   useEffect(() => {
     fetchReports()
@@ -89,7 +97,15 @@ export default function Reports() {
       const start = startOfDay(new Date(startDate)).toISOString()
       const end = endOfDay(new Date(endDate)).toISOString()
       
-      const { data, error } = await getOrdersByDateRange(start, end)
+      const [{ data, error }, payRes, expRes, pendRes] = await Promise.all([
+        getOrdersByDateRange(start, end),
+        getPaymentsByDateRange(start, end),
+        getExpenses(startDate, endDate),
+        getPendingBalanceOrders(),
+      ])
+      setLedger(payRes.data || [])
+      setExpenses(expRes.data || [])
+      setPendingOrders(pendRes.data || [])
       
       if (error) {
         toast.error(t('failedToLoad'))
@@ -112,14 +128,27 @@ export default function Reports() {
       const totalTax = completedOrders.reduce((sum, o) => sum + parseFloat(o.tax_amount || 0), 0)
       const totalDiscount = completedOrders.reduce((sum, o) => sum + parseFloat(o.discount_amount || 0), 0)
       
-      // Payment breakdown
-      const cashOrders = completedOrders.filter(o => o.payment_method === 'CASH')
-      const cardOrders = completedOrders.filter(o => o.payment_method === 'CARD')
-      const upiOrders = completedOrders.filter(o => o.payment_method === 'UPI')
+      // Payment breakdown from each bill's payment rows, so split payments
+      // count under each method (old bills have one row, same as before).
+      const byMethod = { CASH: { sum: 0, count: 0 }, CARD: { sum: 0, count: 0 }, UPI: { sum: 0, count: 0 } }
+      completedOrders.forEach(o => {
+        const net = o.payments?.length
+          ? netByMethod(o.payments)
+          : { [o.payment_method]: parseFloat(o.total_amount || 0) }
+        Object.keys(byMethod).forEach(m => {
+          if (net[m] > 0) {
+            byMethod[m].sum += net[m]
+            byMethod[m].count += 1
+          }
+        })
+      })
+      const cashOrders = { length: byMethod.CASH.count }
+      const cardOrders = { length: byMethod.CARD.count }
+      const upiOrders = { length: byMethod.UPI.count }
       
-      const cashSales = cashOrders.reduce((sum, o) => sum + parseFloat(o.total_amount || 0), 0)
-      const cardSales = cardOrders.reduce((sum, o) => sum + parseFloat(o.total_amount || 0), 0)
-      const upiSales = upiOrders.reduce((sum, o) => sum + parseFloat(o.total_amount || 0), 0)
+      const cashSales = byMethod.CASH.sum
+      const cardSales = byMethod.CARD.sum
+      const upiSales = byMethod.UPI.sum
       
       // Top items
       const itemCounts = {}
@@ -464,11 +493,96 @@ export default function Reports() {
     setGenerating(false)
   }
 
+  const collectionSummary = summarizeCollections({ ledger, expenses, revenue: stats.netSales })
+
+  // Sheets shared by the CSV / Excel / PDF exports
+  const buildSheets = () => {
+    const c = collectionSummary
+    const summary = [
+      ['Period', `${startDate} to ${endDate}`],
+      ['Total orders', stats.totalOrders],
+      ['Completed', stats.completedOrders],
+      ['Cancelled', stats.cancelledOrders],
+      ['Active', stats.activeOrders],
+      ['Gross sales', stats.grossSales],
+      ['Discount', stats.totalDiscount],
+      ['Net sales (completed bills)', stats.netSales],
+      ['Average order', Math.round(stats.avgOrder * 100) / 100],
+      ['Collected', c.collected],
+      ['Refunds', c.refunded],
+      ['Net collected', c.netCollected],
+      ['Expenses', c.expenses],
+      ['Estimated profit', c.estimatedProfit],
+      ['Pending dues (all open bills)', pendingOrders.reduce((sum, o) => sum + balanceDue(o), 0)],
+    ].map(([label, value]) => ({ label, value }))
+    const itemMap = {}
+    allOrders.filter(o => o.order_status === 'COMPLETED').forEach(o => o.order_items?.forEach(i => {
+      const k = `${i.item_name}${i.variant ? ` (${i.variant})` : ''}`
+      itemMap[k] = itemMap[k] || { name: k, qty: 0, amount: 0 }
+      itemMap[k].qty += i.quantity
+      itemMap[k].amount += parseFloat(i.total_price)
+    }))
+    return [
+      { name: 'Summary', columns: [{ key: 'label', label: 'Item' }, { key: 'value', label: 'Value', money: true }], rows: summary },
+      {
+        name: 'Payments by method',
+        columns: [{ key: 'method', label: 'Method' }, { key: 'sales', label: 'Completed bills', money: true }, { key: 'collected', label: 'Collected', money: true }, { key: 'refunded', label: 'Refunded', money: true }],
+        rows: [['CASH', stats.cashSales], ['CARD', stats.cardSales], ['UPI', stats.upiSales]].map(([m, v]) => ({ method: m, sales: v, collected: c.collections[m] || 0, refunded: c.refunds[m] || 0 })),
+      },
+      {
+        name: 'Items sold',
+        columns: [{ key: 'name', label: 'Item' }, { key: 'qty', label: 'Qty' }, { key: 'amount', label: 'Amount', money: true }],
+        rows: Object.values(itemMap).sort((a, b) => b.qty - a.qty),
+      },
+      {
+        name: 'Orders',
+        columns: [
+          { key: 'no', label: 'Order' }, { key: 'time', label: 'Time' }, { key: 'type', label: 'Type' }, { key: 'table', label: 'Table' },
+          { key: 'status', label: 'Status' }, { key: 'pay', label: 'Payment' }, { key: 'total', label: 'Total', money: true },
+          { key: 'paid', label: 'Paid', money: true }, { key: 'due', label: 'Balance', money: true }, { key: 'customer', label: 'Customer' },
+        ],
+        rows: allOrders.map(o => ({
+          no: o.order_number, time: format(new Date(o.created_at), 'dd-MM-yyyy HH:mm'), type: o.order_type, table: o.table_number || '',
+          status: o.order_status, pay: `${o.payment_method || ''} ${o.payment_status || ''}`.trim(), total: parseFloat(o.total_amount || 0),
+          paid: parseFloat(o.paid_amount || 0), due: balanceDue(o), customer: [o.customer_name, o.customer_phone].filter(Boolean).join(' '),
+        })),
+      },
+      {
+        name: 'Payment ledger',
+        columns: [{ key: 'time', label: 'Time' }, { key: 'order', label: 'Order' }, { key: 'kind', label: 'Type' }, { key: 'method', label: 'Method' }, { key: 'amount', label: 'Amount', money: true }, { key: 'by', label: 'By' }, { key: 'note', label: 'Ref / reason' }],
+        rows: ledger.map(p => ({
+          time: format(new Date(p.created_at), 'dd-MM-yyyy HH:mm'), order: p.orders?.order_number || '', kind: p.kind,
+          method: p.method, amount: parseFloat(p.amount), by: p.created_by_name || '', note: p.reference || p.reason || '',
+        })),
+      },
+      {
+        name: 'Expenses',
+        columns: [{ key: 'date', label: 'Date' }, { key: 'name', label: 'Expense' }, { key: 'category', label: 'Category' }, { key: 'method', label: 'Paid by' }, { key: 'amount', label: 'Amount', money: true }],
+        rows: expenses.map(e => ({ date: e.expense_date, name: e.name, category: e.category, method: e.payment_method, amount: parseFloat(e.amount) })),
+      },
+    ]
+  }
+
+  const handleExport = async (kind) => {
+    const filename = `bismi-report-${startDate}_to_${endDate}`
+    try {
+      const sheets = buildSheets()
+      if (kind === 'csv') exportCsv(sheets, filename)
+      else if (kind === 'xlsx') await exportXlsx(sheets, filename)
+      else await exportPdf(sheets, filename, { title: 'Arabian Bismi Mandi Restaurant', subtitle: `Sales report ${startDate} to ${endDate}` })
+      toast.success('✓')
+    } catch (err) {
+      console.error('Export error:', err)
+      toast.error(err?.message || 'Export failed')
+    }
+  }
+
   // Tab labels
   const tabLabels = {
     sales: language === 'ta' ? 'விற்பனை அறிக்கை' : 'Sales Report',
     dayend: language === 'ta' ? 'நாள் முடிவு அறிக்கை' : 'Day End Report',
     settlement: language === 'ta' ? '💰 நாள் கணக்கு' : '💰 Cash Settlement',
+    collections: t('collections'),
   }
 
   if (loading) {
@@ -486,7 +600,7 @@ export default function Reports() {
         <h1 className="text-2xl font-semibold text-cream">{t('salesReports')}</h1>
         
         {/* Tabs */}
-        <div className="flex gap-2 border-b border-brand-gold/20 pb-2">
+        <div className="flex flex-wrap gap-2 border-b border-brand-gold/20 pb-2">
           <button
             onClick={() => setActiveTab('sales')}
             className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-all ${
@@ -519,6 +633,17 @@ export default function Reports() {
           >
             <Wallet size={18} />
             {tabLabels.settlement}
+          </button>
+          <button
+            onClick={() => setActiveTab('collections')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-all ${
+              activeTab === 'collections'
+                ? 'bg-brand-gold text-dark-primary font-semibold'
+                : 'bg-dark-secondary/50 text-cream hover:bg-dark-secondary'
+            }`}
+          >
+            <TrendingUp size={18} />
+            {tabLabels.collections}
           </button>
         </div>
         
@@ -559,6 +684,21 @@ export default function Reports() {
           />
         </div>
         
+        {/* Report export (all tabs except cash settlement) */}
+        {activeTab !== 'settlement' && (
+          <div className={`flex gap-2 ${activeTab === 'dayend' ? '' : 'ml-auto'}`}>
+            <button onClick={() => handleExport('csv')} className="px-3 py-2 rounded-lg bg-dark-secondary text-cream hover:bg-brand-gold/20 text-sm flex items-center gap-1">
+              <FileText size={16} /> {t('exportCsv')}
+            </button>
+            <button onClick={() => handleExport('xlsx')} className="px-3 py-2 rounded-lg bg-green-700 text-white hover:bg-green-600 text-sm flex items-center gap-1">
+              <FileSpreadsheet size={16} /> {t('exportExcel')}
+            </button>
+            <button onClick={() => handleExport('pdf')} className="px-3 py-2 rounded-lg bg-red-700 text-white hover:bg-red-600 text-sm flex items-center gap-1">
+              <Download size={16} /> {t('exportPdf')}
+            </button>
+          </div>
+        )}
+
         {/* Print/PDF buttons for Day End tab */}
         {activeTab === 'dayend' && (
           <div className="ml-auto flex gap-2">
@@ -818,6 +958,11 @@ export default function Reports() {
             </div>
           )}
         </div>
+      )}
+
+      {/* COLLECTIONS & PROFIT TAB CONTENT */}
+      {activeTab === 'collections' && (
+        <CollectionsReport summary={collectionSummary} pendingOrders={pendingOrders} />
       )}
 
       {/* CASH SETTLEMENT TAB CONTENT */}

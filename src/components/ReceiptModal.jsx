@@ -12,6 +12,7 @@ import {
   isPrinterConnected, 
   loadPrinterConfig 
 } from '../lib/thermalPrinter'
+import { receiptExtras } from '../lib/billing'
 
 export default function ReceiptModal({ order, onClose, settings = {} }) {
   const receiptRef = useRef(null)
@@ -30,6 +31,7 @@ export default function ReceiptModal({ order, onClose, settings = {} }) {
   }, [])
 
   if (!order) return null
+  const extras = receiptExtras(order)
 
   // Thermal Print (Auto-selects best method)
   const handleThermalPrint = async () => {
@@ -185,10 +187,10 @@ ${order.customer_phone ? `📱 ${order.customer_phone}` : ''}
 ${itemsList}
 ━━━━━━━━━━━━━━━
 Subtotal: ₹${parseFloat(order.subtotal).toFixed(0)}
-${order.discount_amount > 0 ? `Discount: -₹${parseFloat(order.discount_amount).toFixed(0)}\n` : ''}━━━━━━━━━━━━━━━
+${order.discount_amount > 0 ? `Discount: -₹${parseFloat(order.discount_amount).toFixed(0)}\n` : ''}${extras.parcel > 0 ? `Parcel charge: ₹${extras.parcel.toFixed(0)}\n` : ''}${extras.roundOff !== 0 ? `Round off: ${extras.roundOff.toFixed(2)}\n` : ''}━━━━━━━━━━━━━━━
 *TOTAL: ₹${parseFloat(order.total_amount).toFixed(0)}*
 ━━━━━━━━━━━━━━━
-💳 Payment: ${order.payment_method} (${order.payment_status})
+💳 Payment: ${extras.paymentLabel} (${order.payment_status})${extras.splitLines.map((l) => `\n   ${l.label}: ₹${l.amount.toFixed(0)}`).join('')}${extras.due > 0 ? `\n*Balance due: ₹${extras.due.toFixed(0)}*` : ''}
 ━━━━━━━━━━━━━━━
 🙏 Thank you for dining with us!
 _"Good Food Brings People Together"_
@@ -336,6 +338,18 @@ _"Good Food Brings People Together"_
                   <span>-₹{parseFloat(order.discount_amount).toFixed(2)}</span>
                 </div>
               )}
+              {extras.parcel > 0 && (
+                <div className="flex justify-between">
+                  <span>Parcel charge</span>
+                  <span>₹{extras.parcel.toFixed(2)}</span>
+                </div>
+              )}
+              {extras.roundOff !== 0 && (
+                <div className="flex justify-between">
+                  <span>Round off</span>
+                  <span>{extras.roundOff > 0 ? '+' : '-'}₹{Math.abs(extras.roundOff).toFixed(2)}</span>
+                </div>
+              )}
             </div>
 
             <div className="border-t border-double border-gray-600 my-2" />
@@ -352,14 +366,38 @@ _"Good Food Brings People Together"_
             <div className="text-[10px] space-y-0.5">
               <div className="flex justify-between">
                 <span>Payment:</span>
-                <span className="font-semibold">{order.payment_method}</span>
+                <span className="font-semibold">{extras.paymentLabel}</span>
               </div>
+              {extras.splitLines.map((l) => (
+                <div key={l.label} className="flex justify-between pl-2 text-gray-600">
+                  <span>{l.label}</span>
+                  <span>₹{l.amount.toFixed(2)}</span>
+                </div>
+              ))}
               <div className="flex justify-between">
                 <span>Status:</span>
                 <span className={`font-bold ${order.payment_status === 'PAID' ? 'text-green-600' : 'text-yellow-600'}`}>
                   {order.payment_status}
                 </span>
               </div>
+              {extras.due > 0 && (
+                <>
+                  <div className="flex justify-between">
+                    <span>Paid:</span>
+                    <span>₹{extras.paid.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-[11px]">
+                    <span>BALANCE DUE:</span>
+                    <span>₹{extras.due.toFixed(2)}</span>
+                  </div>
+                </>
+              )}
+              {extras.refunded > 0 && (
+                <div className="flex justify-between">
+                  <span>Refunded:</span>
+                  <span>₹{extras.refunded.toFixed(2)}</span>
+                </div>
+              )}
             </div>
 
             <div className="border-t border-dashed border-gray-400 my-3" />

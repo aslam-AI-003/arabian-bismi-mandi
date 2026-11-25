@@ -17,29 +17,24 @@ import {
   Usb,
   Bluetooth,
   Printer as PrinterIcon,
+  Armchair,
+  Receipt,
+  Users,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
 import { useLanguage } from '../context/LanguageContext'
 import { isPrinterConnected, getPrinterConnectionType, onPrinterStatusChange } from '../lib/thermalPrinter'
 import { signOut } from '../lib/supabase'
+import { useAuth } from '../context/AuthContext'
+import { useConnection } from '../context/ConnectionContext'
 import toast from 'react-hot-toast'
 // Import the logo
 import bismiLogo from '../assets/Bismi_Logo.jpg'
 
+// Online = the database answered within the last check (not just Wi-Fi on).
 function useOnlineStatus() {
-  const [online, setOnline] = useState(navigator.onLine)
-  useEffect(() => {
-    const goOnline = () => setOnline(true)
-    const goOffline = () => setOnline(false)
-    window.addEventListener('online', goOnline)
-    window.addEventListener('offline', goOffline)
-    return () => {
-      window.removeEventListener('online', goOnline)
-      window.removeEventListener('offline', goOffline)
-    }
-  }, [])
-  return online
+  return useConnection().online
 }
 
 function usePrinterStatus() {
@@ -92,6 +87,8 @@ export default function Layout() {
   const location = useLocation()
   const navigate = useNavigate()
   const { language, toggleLanguage, t } = useLanguage()
+  const { isAdmin, staff } = useAuth()
+  const { online } = useConnection()
 
   const handleLogout = async () => {
     await signOut()
@@ -99,15 +96,19 @@ export default function Layout() {
     navigate('/login')
   }
 
+  // adminOnly pages are hidden from cashiers (the database enforces it too)
   const navItems = [
-    { path: '/dashboard', icon: LayoutDashboard, labelKey: 'dashboard' },
+    { path: '/dashboard', icon: LayoutDashboard, labelKey: 'dashboard', adminOnly: true },
     { path: '/pos', icon: ShoppingCart, labelKey: 'pos' },
+    { path: '/tables', icon: Armchair, labelKey: 'tables' },
     { path: '/orders', icon: ClipboardList, labelKey: 'orders' },
-    { path: '/reports', icon: BarChart3, labelKey: 'reports' },
-    { path: '/menu', icon: UtensilsCrossed, labelKey: 'menu' },
-    { path: '/offers', icon: Gift, labelKey: 'offers' },
-    { path: '/settings', icon: Settings, labelKey: 'settings' },
-  ]
+    { path: '/reports', icon: BarChart3, labelKey: 'reports', adminOnly: true },
+    { path: '/expenses', icon: Receipt, labelKey: 'expenses', adminOnly: true },
+    { path: '/menu', icon: UtensilsCrossed, labelKey: 'menu', adminOnly: true },
+    { path: '/offers', icon: Gift, labelKey: 'offers', adminOnly: true },
+    { path: '/staff', icon: Users, labelKey: 'staff', adminOnly: true },
+    { path: '/settings', icon: Settings, labelKey: 'settings', adminOnly: true },
+  ].filter((item) => isAdmin || !item.adminOnly)
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-dark-primary via-dark-secondary to-dark-tertiary relative">
@@ -202,7 +203,7 @@ export default function Layout() {
         </div>
 
         {/* Navigation */}
-        <nav className="p-4 space-y-2">
+        <nav className="p-4 space-y-1 overflow-y-auto max-h-[calc(100vh-190px)]">
           {navItems.map(({ path, icon: Icon, labelKey }) => (
             <NavLink
               key={path}
@@ -220,7 +221,12 @@ export default function Layout() {
         </nav>
 
         {/* Logout */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-brand-gold/20">
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-brand-gold/20 bg-dark-primary">
+          {staff && (
+            <p className="text-muted text-xs px-3 pb-2 truncate">
+              {staff.name || staff.phone} · {t(staff.role)}
+            </p>
+          )}
           <button
             onClick={handleLogout}
             className="nav-link w-full text-red-400 hover:text-red-300 hover:bg-red-500/10"
@@ -267,6 +273,12 @@ export default function Layout() {
 
         {/* Page Content */}
         <div className="p-4 lg:p-6 pt-20 lg:pt-6">
+          {!online && (
+            <div className="mb-4 flex items-center gap-2 p-3 rounded-lg bg-red-500/15 border border-red-500/40 text-red-300 text-sm">
+              <WifiOff size={18} className="shrink-0" />
+              {t('offlineBanner')}
+            </div>
+          )}
           <Outlet />
         </div>
       </main>

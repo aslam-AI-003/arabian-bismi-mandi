@@ -14,3 +14,40 @@ The React Compiler is not enabled on this template because of its impact on dev 
 ## Expanding the Oxlint configuration
 
 If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+
+---
+
+# Arabian Bismi POS: features added from SIP N' GOSSIP
+
+Tables, staff roles (admin/cashier), split and part payments, pending balance
+collection, refunds (admin only) with a payment ledger, expenses, discount
+(% or ₹), parcel charge, round off, report export (CSV/Excel/PDF), menu CSV
+import, a live online/offline check with duplicate-bill protection, and a
+first-time setup screen.
+
+## Deploy order (important)
+
+1. **Back up** the Supabase database (Dashboard → Database → Backups).
+2. Run `database/sng_features_migration.sql` in the Supabase **SQL Editor**.
+   It only adds tables/columns, back-fills a payment row for every old paid
+   bill, and replaces the open `USING (true)` security policies with role
+   checks. It is safe to run again. Every existing login becomes an **admin**.
+3. Deploy the app (needs Node 20.19+ to build).
+4. Sign in as an admin. The first-time setup screen appears once: check the
+   details and create the tables.
+5. Add cashiers under **Staff** (mobile number + password; no email is sent).
+
+New defaults keep billing the same as before: parcel charge 0, round off off,
+cashiers can cancel but cannot give discounts. Change these in **Settings →
+Billing settings / Cashier permissions**.
+
+## Notes
+
+- New bills, payments, refunds and cancels go through database functions
+  (`place_order`, `add_payments`, `record_refund`, `cancel_order`,
+  `update_order_items`). Prices come from the menu table, not the browser.
+- The scripts in `scripts/` that write the menu with the anon key
+  (`seed-menu.mjs`, `merge-duplicate-categories.mjs`) no longer work after the
+  migration, because menu writes now need an admin login. Use Menu → Import
+  CSV or the SQL Editor instead.
+- Tests: `npm test` (billing math, CSV import/export).

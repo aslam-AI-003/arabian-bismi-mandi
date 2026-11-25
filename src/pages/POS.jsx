@@ -1,35 +1,77 @@
-import { useState, useEffect } from 'react'
-import { Search, Plus, Minus, Trash2, UtensilsCrossed, Package, Truck, Loader2, Printer } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Search, Plus, Minus, Trash2, UtensilsCrossed, Package, Truck, Loader2, SplitSquareHorizontal, Clock, X } from 'lucide-react'
 import { useCart } from '../context/CartContext'
-import { getCategories, getMenuItems, createOrder, createOrderItems, getOrders } from '../lib/supabase'
+import { getCategories, getMenuItems, getTables, getOrderById, placeOrder, updateOrderItems } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { useLanguage } from '../context/LanguageContext'
+import { useAuth } from '../context/AuthContext'
+import { useAppSettings } from '../context/SettingsContext'
+import { useConnection } from '../context/ConnectionContext'
 import { printReceipt, loadPrinterConfig } from '../lib/thermalPrinter'
+import { dbErrorMessage } from '../lib/billing'
 import ReceiptModal from '../components/ReceiptModal'
+import PaymentModal from '../components/PaymentModal'
+
+const isClosed = (o) => !o || o.order_status === 'CANCELLED' || (o.order_status === 'COMPLETED' && ['PAID', 'REFUNDED'].includes(o.payment_status))
 
 export default function POS() {
   const [categories, setCategories] = useState([])
   const [menuItems, setMenuItems] = useState([])
+  const [tables, setTables] = useState([])
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [placingOrder, setPlacingOrder] = useState(false)
   const [lastOrder, setLastOrder] = useState(null)
   const [showReceipt, setShowReceipt] = useState(false)
+  const [showPayment, setShowPayment] = useState(false)
+  const busy = useRef(false)
   const cart = useCart()
   const { t, language } = useLanguage()
+  const { isAdmin } = useAuth()
+  const { cashierCanDiscount, settings } = useAppSettings()
+  const { online } = useConnection()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const canDiscount = isAdmin || cashierCanDiscount
+  const editing = cart.editingOrder
 
-  // Fetch categories and menu items on mount
+  // Fetch categories, menu items and tables on mount
   useEffect(() => {
     fetchData()
   }, [])
 
+  // ?order=<id>: open a running order to add items. ?table=<id>: new dine-in order for that table.
+  useEffect(() => {
+    const orderParam = searchParams.get('order')
+    const tableParam = searchParams.get('table')
+    if (orderParam && orderParam !== editing?.id) {
+      getOrderById(orderParam).then(({ data, error }) => {
+        if (error || !data) { toast.error(dbErrorMessage(error, language)); return }
+        if (data.order_status === 'COMPLETED' || data.order_status === 'CANCELLED' || Number(data.paid_amount) > 0) {
+          toast.error(dbErrorMessage({ message: 'ORDER_HAS_PAYMENTS' }, language))
+          return
+        }
+        cart.loadOrder(data)
+      })
+      setSearchParams({}, { replace: true })
+    } else if (tableParam) {
+      if (!editing) {
+        cart.setOrderType('DINE_IN')
+        cart.setTableId(tableParam)
+      }
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams])
+
   const fetchData = async () => {
     setLoading(true)
     try {
-      const [catResult, menuResult] = await Promise.all([
+      const [catResult, menuResult, tableResult] = await Promise.all([
         getCategories(),
-        getMenuItems()
+        getMenuItems(),
+        getTables(),
       ])
       
       if (catResult.data) {
@@ -38,11 +80,19 @@ export default function POS() {
       if (menuResult.data) {
         setMenuItems(menuResult.data)
       }
+      if (tableResult.data) {
+        setTables(tableResult.data)
+      }
     } catch (error) {
       console.error('Error fetching data:', error)
       toast.error('Failed to load menu')
     }
     setLoading(false)
+  }
+
+  const refreshTables = async () => {
+    const { data } = await getTables()
+    if (data) setTables(data)
   }
 
   const filteredItems = menuItems.filter(item => {
@@ -60,103 +110,135 @@ export default function POS() {
     })
   }
 
-  const handlePlaceOrder = async () => {
+  const selectedTable = tables.find((tb) => tb.id === cart.tableId)
+
+  const validateCart = () => {
     if (cart.items.length === 0) {
       toast.error('Cart is empty!')
-      return
+      return false
     }
-
-    if (cart.orderType === 'DINE_IN' && !cart.tableNumber) {
-      toast.error('Please enter table number!')
-      return
+    if (cart.orderType === 'DINE_IN') {
+      if (tables.length > 0 && !cart.tableId && !editing) {
+        toast.error(t('selectTable'))
+        return false
+      }
+      if (tables.length === 0 && !cart.tableNumber && !editing) {
+        toast.error('Please enter table number!')
+        return false
+      }
     }
+    if (!online) {
+      toast.error(t('offlineBanner'))
+      return false
+    }
+    return true
+  }
 
+  const finishSaved = async (order, duplicate) => {
+    if (duplicate) {
+      toast(language === 'ta' ? `இந்த பில் ஏற்கனவே சேமிக்கப்பட்டது (${order.order_number})` : `This bill was already saved (${order.order_number})`, { icon: 'ℹ️' })
+    } else {
+      toast.success(`Order ${order.order_number} placed successfully!`)
+    }
+    const completeOrder = { ...order, order_items: [...(order.order_items || [])] }
+    setLastOrder(completeOrder)
+    cart.clearCart()
+    refreshTables()
+
+    // Auto-print if enabled in settings
+    const config = loadPrinterConfig()
+    if (config.autoPrint) {
+      try {
+        const result = await printReceipt(completeOrder, settings)
+        if (result.success) {
+          toast.success('🖨️ Receipt printed automatically!')
+        }
+      } catch (printError) {
+        console.error('Auto-print error:', printError)
+      }
+    } else {
+      // Show receipt modal for manual print
+      setShowReceipt(true)
+    }
+  }
+
+  // payments: [] = pay later; otherwise [{id, method, amount, reference}]
+  const submitOrder = async (payments) => {
+    if (busy.current) return
+    busy.current = true
     setPlacingOrder(true)
-
     try {
-      // Create order
       const orderData = {
-        order_number: '', // Will be generated by database trigger
+        id: cart.orderId,
         order_type: cart.orderType,
-        order_status: 'PENDING',
-        table_number: cart.tableNumber || null,
+        table_id: cart.orderType === 'DINE_IN' ? cart.tableId : null,
+        table_number: cart.orderType === 'DINE_IN' ? (cart.tableNumber || null) : null,
         customer_name: cart.customerName || null,
         customer_phone: cart.customerPhone || null,
         customer_address: cart.customerAddress || null,
-        subtotal: cart.subtotal,
-        discount_type: cart.discountType,
-        discount_value: cart.discountValue,
-        discount_amount: cart.discountAmount,
-        tax_percentage: cart.taxPercentage,
-        tax_amount: cart.taxAmount,
-        total_amount: cart.total,
-        payment_method: cart.paymentMethod,
-        payment_status: 'PAID',
-        notes: cart.notes || null
+        discount_type: cart.discountAmount > 0 ? cart.discountType : null,
+        discount_value: cart.discountAmount > 0 ? cart.discountValue : 0,
+        notes: cart.notes || null,
       }
-
-      const { data: order, error: orderError } = await createOrder(orderData)
-      
-      if (orderError) {
-        console.error('Order error:', orderError)
-        toast.error('Failed to create order')
-        setPlacingOrder(false)
-        return
-      }
-
-      // Create order items
-      const orderItems = cart.items.map(item => ({
-        order_id: order.id,
-        menu_item_id: item.id,
-        item_name: item.name,
-        variant: item.variant || null,
-        quantity: item.quantity,
-        unit_price: item.price,
-        total_price: item.price * item.quantity
-      }))
-
-      const { error: itemsError } = await createOrderItems(orderItems)
-      
-      if (itemsError) {
-        console.error('Items error:', itemsError)
-        toast.error('Order created but items failed to save')
-      } else {
-        toast.success(`Order ${order.order_number} placed successfully!`)
-        
-        // Build complete order object for receipt/printing
-        const completeOrder = {
-          ...order,
-          order_items: orderItems.map((item, idx) => ({
-            ...item,
-            id: idx,
-          }))
-        }
-        setLastOrder(completeOrder)
-        
-        // Auto-print if enabled in settings
-        const config = loadPrinterConfig()
-        if (config.autoPrint) {
-          try {
-            const result = await printReceipt(completeOrder)
-            if (result.success) {
-              toast.success('🖨️ Receipt printed automatically!')
-            }
-          } catch (printError) {
-            console.error('Auto-print error:', printError)
-          }
-        } else {
-          // Show receipt modal for manual print
-          setShowReceipt(true)
-        }
-        
-        cart.clearCart()
-      }
+      const items = cart.items.map(item => ({ menu_item_id: item.id, quantity: item.quantity }))
+      const { data, error } = await placeOrder(orderData, items, payments)
+      if (error) throw error
+      setShowPayment(false)
+      await finishSaved(data, data.duplicate)
     } catch (error) {
       console.error('Error placing order:', error)
-      toast.error('Failed to place order')
+      toast.error(dbErrorMessage(error, language))
+      if (/TABLE_OCCUPIED/.test(error?.message || '')) refreshTables()
+      throw error
+    } finally {
+      busy.current = false
+      setPlacingOrder(false)
     }
+  }
 
-    setPlacingOrder(false)
+  // Existing one-tap flow: full payment with the selected method.
+  const handlePlaceOrder = async () => {
+    if (!validateCart()) return
+    try {
+      await submitOrder([{ id: cart.quickPaymentId, method: cart.paymentMethod, amount: cart.total, full: true }])
+    } catch { /* toast already shown */ }
+  }
+
+  const handlePayLater = async () => {
+    if (!validateCart()) return
+    try { await submitOrder([]) } catch { /* toast already shown */ }
+  }
+
+  const handleSplit = () => {
+    if (!validateCart()) return
+    setShowPayment(true)
+  }
+
+  const handleUpdateOrder = async () => {
+    if (!validateCart() || busy.current) return
+    busy.current = true
+    setPlacingOrder(true)
+    try {
+      const items = cart.items.map(item => ({ menu_item_id: item.id, quantity: item.quantity }))
+      const extra = {
+        customer_name: cart.customerName || '',
+        customer_phone: cart.customerPhone || '',
+        notes: cart.notes || '',
+        discount_type: cart.discountAmount > 0 ? cart.discountType : '',
+        discount_value: cart.discountAmount > 0 ? cart.discountValue : 0,
+      }
+      const { data, error } = await updateOrderItems(editing.id, editing.version, items, extra)
+      if (error) throw error
+      toast.success(`${data.order_number} ✓`)
+      setLastOrder(data)
+      cart.clearCart()
+      navigate('/tables')
+    } catch (error) {
+      toast.error(dbErrorMessage(error, language))
+    } finally {
+      busy.current = false
+      setPlacingOrder(false)
+    }
   }
 
   if (loading) {
@@ -169,6 +251,8 @@ export default function POS() {
       </div>
     )
   }
+
+  const disabled = cart.items.length === 0 || placingOrder || !online
 
   return (
     <>
@@ -241,6 +325,16 @@ export default function POS() {
 
       {/* RIGHT SIDE - Cart/Order Section (sticky, independently scrollable) */}
       <div className="w-full lg:w-[360px] xl:w-[400px] shrink-0 h-full overflow-y-auto card p-3 flex flex-col">
+        {/* Editing a running order */}
+        {editing && (
+          <div className="mb-3 flex items-center justify-between p-2 rounded-lg bg-blue-500/15 border border-blue-500/40 text-blue-300 text-sm">
+            <span>{t('editingOrder')} <b className="font-mono">{editing.order_number}</b>{cart.tableNumber ? ` · ${cart.tableNumber}` : ''}</span>
+            <button type="button" onClick={() => cart.clearCart()} className="flex items-center gap-1 text-xs hover:text-cream">
+              <X size={14} /> {t('exitEdit')}
+            </button>
+          </div>
+        )}
+
         {/* Order Type */}
         <div className="mb-4">
           <p className="text-muted text-sm mb-2">{t('orderType')}</p>
@@ -252,12 +346,13 @@ export default function POS() {
             ].map(({ value, icon: Icon, labelKey }) => (
               <button
                 key={value}
-                onClick={() => cart.setOrderType(value)}
+                onClick={() => !editing && cart.setOrderType(value)}
+                disabled={!!editing}
                 className={`flex flex-col items-center justify-center gap-1 p-2 rounded-lg border transition-all min-h-[60px] ${
                   cart.orderType === value
                     ? 'border-brand-gold bg-brand-gold/10 text-brand-gold'
                     : 'border-brand-gold/20 text-muted hover:border-brand-gold/40'
-                }`}
+                } ${editing ? 'cursor-not-allowed' : ''}`}
               >
                 <Icon size={18} />
                 <span className="text-[10px] font-medium whitespace-nowrap">{t(labelKey)}</span>
@@ -266,18 +361,49 @@ export default function POS() {
           </div>
         </div>
 
-        {/* Table Number (Dine In) */}
-        {cart.orderType === 'DINE_IN' && (
-          <div className="mb-3">
-            <label className="text-muted text-sm mb-1 block">{t('tableNumber')} *</label>
-            <input
-              type="number"
-              value={cart.tableNumber}
-              onChange={(e) => cart.setTableNumber(e.target.value)}
-              className="input"
-              placeholder={t('enterTableNumber')}
-            />
-          </div>
+        {/* Table (Dine In): pick from tables if set up, else type the number as before */}
+        {cart.orderType === 'DINE_IN' && !editing && (
+          tables.length > 0 ? (
+            <div className="mb-3">
+              <label className="text-muted text-sm mb-1 block">{t('selectTable')} *</label>
+              <div className="grid grid-cols-5 gap-1.5 max-h-[120px] overflow-y-auto">
+                {tables.map((tb) => {
+                  const busyTable = !isClosed(tb.active_order)
+                  const selected = cart.tableId === tb.id
+                  return (
+                    <button
+                      key={tb.id}
+                      type="button"
+                      disabled={busyTable}
+                      onClick={() => { cart.setTableId(tb.id); cart.setTableNumber(tb.name) }}
+                      title={busyTable ? `${t('occupied')} · ${tb.active_order?.order_number}` : t('free')}
+                      className={`py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                        selected
+                          ? 'bg-brand-gold text-dark-primary border-brand-gold'
+                          : busyTable
+                            ? 'bg-red-500/10 text-red-400/70 border-red-500/30 cursor-not-allowed'
+                            : 'bg-green-500/10 text-green-300 border-green-500/30 hover:bg-green-500/20'
+                      }`}
+                    >
+                      {tb.name}
+                    </button>
+                  )
+                })}
+              </div>
+              {selectedTable && <p className="text-brand-gold text-xs mt-1">{t('table')}: {selectedTable.name}</p>}
+            </div>
+          ) : (
+            <div className="mb-3">
+              <label className="text-muted text-sm mb-1 block">{t('tableNumber')} *</label>
+              <input
+                type="number"
+                value={cart.tableNumber}
+                onChange={(e) => cart.setTableNumber(e.target.value)}
+                className="input"
+                placeholder={t('enterTableNumber')}
+              />
+            </div>
+          )
         )}
 
         {/* Customer Info - Shown for ALL order types */}
@@ -376,6 +502,34 @@ export default function POS() {
           )}
         </div>
 
+        {/* Discount (admins, or cashiers when allowed in Settings) */}
+        {canDiscount && cart.items.length > 0 && (
+          <div className="mb-3 flex items-center gap-2">
+            <span className="text-muted text-xs">{t('discountLabel')}</span>
+            {[{ v: null, l: '—' }, { v: 'PERCENTAGE', l: t('percent') }, { v: 'FIXED', l: t('flat') }].map(({ v, l }) => (
+              <button
+                key={l}
+                type="button"
+                onClick={() => { cart.setDiscountType(v); if (!v) cart.setDiscountValue(0) }}
+                className={`px-2 py-1 rounded text-xs ${cart.discountType === v ? 'bg-brand-gold text-dark-primary' : 'bg-dark-secondary text-cream'}`}
+              >
+                {l}
+              </button>
+            ))}
+            {cart.discountType && (
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={cart.discountValue || ''}
+                onChange={(e) => cart.setDiscountValue(Math.max(parseFloat(e.target.value) || 0, 0))}
+                className="input py-1 px-2 text-sm w-20 font-mono"
+                aria-label={t('discountLabel')}
+              />
+            )}
+          </div>
+        )}
+
         {/* Totals */}
         <div className="border-t border-brand-gold/20 pt-4 space-y-2">
           <div className="flex justify-between text-muted">
@@ -388,6 +542,18 @@ export default function POS() {
               <span className="font-mono">-₹{cart.discountAmount.toFixed(2)}</span>
             </div>
           )}
+          {cart.parcelCharge > 0 && (
+            <div className="flex justify-between text-muted">
+              <span>{t('parcelCharge')}</span>
+              <span className="font-mono">₹{cart.parcelCharge.toFixed(2)}</span>
+            </div>
+          )}
+          {cart.roundOff !== 0 && (
+            <div className="flex justify-between text-muted text-sm">
+              <span>{t('roundOff')}</span>
+              <span className="font-mono">{cart.roundOff > 0 ? '+' : '-'}₹{Math.abs(cart.roundOff).toFixed(2)}</span>
+            </div>
+          )}
           <div className="flex justify-between text-cream text-lg font-semibold pt-2 border-t border-brand-gold/20">
             <span>{t('total')}</span>
             <span className="font-mono text-brand-gold">₹{cart.total.toFixed(2)}</span>
@@ -396,37 +562,76 @@ export default function POS() {
 
         {/* Payment & Place Order */}
         <div className="mt-4 space-y-3">
-          <div className="grid grid-cols-3 gap-2">
-            {['CASH', 'CARD', 'UPI'].map((method) => (
+          {editing ? (
+            <button
+              onClick={handleUpdateOrder}
+              disabled={disabled}
+              className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {placingOrder && <Loader2 className="animate-spin" size={20} />}
+              {t('updateOrder')}
+            </button>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-2">
+                {['CASH', 'CARD', 'UPI'].map((method) => (
+                  <button
+                    key={method}
+                    onClick={() => cart.setPaymentMethod(method)}
+                    className={`py-2 rounded-lg text-sm font-medium transition-all ${
+                      cart.paymentMethod === method
+                        ? 'bg-brand-gold text-dark-primary'
+                        : 'bg-dark-secondary text-cream hover:bg-brand-gold/20'
+                    }`}
+                  >
+                    {method}
+                  </button>
+                ))}
+              </div>
               <button
-                key={method}
-                onClick={() => cart.setPaymentMethod(method)}
-                className={`py-2 rounded-lg text-sm font-medium transition-all ${
-                  cart.paymentMethod === method
-                    ? 'bg-brand-gold text-dark-primary'
-                    : 'bg-dark-secondary text-cream hover:bg-brand-gold/20'
-                }`}
+                onClick={handlePlaceOrder}
+                disabled={disabled}
+                className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {method}
+                {placingOrder && <Loader2 className="animate-spin" size={20} />}
+                {placingOrder ? t('placingOrder') : t('placeOrder')}
               </button>
-            ))}
-          </div>
-          <button
-            onClick={handlePlaceOrder}
-            disabled={cart.items.length === 0 || placingOrder}
-            className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {placingOrder && <Loader2 className="animate-spin" size={20} />}
-            {placingOrder ? t('placingOrder') : t('placeOrder')}
-          </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={handleSplit}
+                  disabled={disabled}
+                  className="flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-medium bg-dark-secondary text-cream hover:bg-brand-gold/20 disabled:opacity-50"
+                >
+                  <SplitSquareHorizontal size={14} /> {t('splitPayment')}
+                </button>
+                <button
+                  onClick={handlePayLater}
+                  disabled={disabled}
+                  className="flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-medium bg-dark-secondary text-cream hover:bg-brand-gold/20 disabled:opacity-50"
+                >
+                  <Clock size={14} /> {t('payLater')}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
+
+    {showPayment && (
+      <PaymentModal
+        due={cart.total}
+        defaultMethod={cart.paymentMethod}
+        onConfirm={(rows) => submitOrder(rows)}
+        onClose={() => setShowPayment(false)}
+      />
+    )}
 
     {/* Receipt Modal - Shows after order placement */}
     {showReceipt && lastOrder && (
       <ReceiptModal
         order={lastOrder}
+        settings={settings}
         onClose={() => {
           setShowReceipt(false)
           setLastOrder(null)

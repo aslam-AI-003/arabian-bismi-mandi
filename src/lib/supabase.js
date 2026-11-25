@@ -113,7 +113,7 @@ export const createOrderItems = async (items) => {
 export const getOrders = async (status = null, date = null) => {
   let query = supabase
     .from('orders')
-    .select('*, order_items(*)')
+    .select('*, order_items(*), payments:pos_payments(*)')
     .order('created_at', { ascending: false })
   
   if (status) {
@@ -189,7 +189,7 @@ export const getDailySales = async (date) => {
 export const getOrdersByDateRange = async (startDate, endDate) => {
   const { data, error } = await supabase
     .from('orders')
-    .select('*, order_items(*)')
+    .select('*, order_items(*), payments:pos_payments(*)')
     .gte('created_at', startDate)
     .lte('created_at', endDate)
     .order('created_at', { ascending: false })
@@ -375,3 +375,169 @@ export const deleteCashOut = async (id) => {
     .eq('id', id)
   return { data, error }
 }
+
+// ============================================
+// SNG FEATURES (see database/sng_features_migration.sql)
+// Orders, payments, refunds and cancels go through database functions so
+// they are atomic, permission-checked and safe to retry.
+// ============================================
+
+const rpc = async (fn, args) => {
+  const { data, error } = await supabase.rpc(fn, args)
+  return { data, error }
+}
+
+/** Lightweight round trip to the database (used by the online indicator). */
+export const pingDatabase = async () => {
+  const { error } = await supabase.from('settings').select('key', { head: true, count: 'exact' }).limit(1)
+  if (error) throw error
+  return true
+}
+
+export const settingsToMap = (rows = []) => Object.fromEntries(rows.map((r) => [r.key, r.value]))
+
+export const saveSettings = async (map) => {
+  const now = new Date().toISOString()
+  const rows = Object.entries(map).map(([key, value]) => ({
+    key,
+    value: value == null ? '' : typeof value === 'string' ? value : JSON.stringify(value),
+    updated_at: now,
+  }))
+  const { error } = await supabase.from('settings').upsert(rows, { onConflict: 'key' })
+  return { error }
+}
+
+// Orders
+export const placeOrder = (order, items, payments = []) =>
+  rpc('place_order', { p_order: order, p_items: items, p_payments: payments })
+
+export const updateOrderItems = (orderId, expectedVersion, items, extra = {}) =>
+  rpc('update_order_items', { p_order_id: orderId, p_expected_version: expectedVersion, p_items: items, p_extra: extra })
+
+export const addPayments = (orderId, payments) =>
+  rpc('add_payments', { p_order_id: orderId, p_payments: payments })
+
+export const recordRefund = (orderId, refund) =>
+  rpc('record_refund', { p_order_id: orderId, p_refund: refund })
+
+export const cancelOrder = (orderId, reason) =>
+  rpc('cancel_order', { p_order_id: orderId, p_reason: reason || null })
+
+export const getOrderById = async (orderId) => {
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*, order_items(*), payments:pos_payments(*)')
+    .eq('id', orderId)
+    .single()
+  if (data?.order_items) data.order_items.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+  return { data, error }
+}
+
+export const getPaymentsByDateRange = async (startDate, endDate) => {
+  const { data, error } = await supabase
+    .from('pos_payments')
+    .select('*, orders(order_number, order_status, order_type)')
+    .gte('created_at', startDate)
+    .lte('created_at', endDate)
+    .order('created_at', { ascending: true })
+  return { data, error }
+}
+
+export const getPendingBalanceOrders = async () => {
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*, order_items(*), payments:pos_payments(*)')
+    .in('payment_status', ['PENDING', 'PARTIAL'])
+    .neq('order_status', 'CANCELLED')
+    .gt('total_amount', 0)
+    .order('created_at', { ascending: true })
+  return { data, error }
+}
+
+// Dining tables
+export const getTables = async (includeInactive = false) => {
+  let query = supabase
+    .from('dining_tables')
+    .select('*, active_order:orders!active_order_id(id, order_number, order_status, payment_status, total_amount, paid_amount, created_at, version, customer_name)')
+    .order('display_order')
+    .order('name')
+  if (!includeInactive) query = query.eq('is_active', true)
+  const { data, error } = await query
+  return { data, error }
+}
+
+export const createTables = async (rows) => {
+  const { data, error } = await supabase.from('dining_tables').insert(rows).select()
+  return { data, error }
+}
+
+export const updateTable = async (id, values) => {
+  const { data, error } = await supabase
+    .from('dining_tables')
+    .update({ ...values, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single()
+  return { data, error }
+}
+
+export const deleteTable = async (id) => {
+  const { error } = await supabase.from('dining_tables').delete().eq('id', id)
+  return { error }
+}
+
+export const subscribeToTables = (callback) => supabase
+  .channel('dining_tables')
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'dining_tables' }, callback)
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, callback)
+  .subscribe()
+
+// Expenses
+export const getExpenses = async (startDate, endDate) => {
+  const { data, error } = await supabase
+    .from('pos_expenses')
+    .select('*')
+    .gte('expense_date', startDate)
+    .lte('expense_date', endDate)
+    .order('expense_date', { ascending: false })
+    .order('created_at', { ascending: false })
+  return { data, error }
+}
+
+export const saveExpense = async (expense) => {
+  const row = { ...expense, updated_at: new Date().toISOString() }
+  const query = expense.id
+    ? supabase.from('pos_expenses').update(row).eq('id', expense.id)
+    : supabase.from('pos_expenses').insert([row])
+  const { data, error } = await query.select().single()
+  return { data, error }
+}
+
+export const deleteExpense = async (id) => {
+  const { error } = await supabase.from('pos_expenses').delete().eq('id', id)
+  return { error }
+}
+
+// Staff
+export const getMyStaffProfile = async (userId) => {
+  const { data, error } = await supabase.from('pos_staff').select('*').eq('user_id', userId).maybeSingle()
+  return { data, error }
+}
+
+export const getStaffList = async () => {
+  const { data, error } = await supabase.from('pos_staff').select('*').order('role').order('name')
+  return { data, error }
+}
+
+export const getBootstrapStatus = () => rpc('staff_bootstrap_status', {})
+
+export const claimFirstAdmin = (name) => rpc('claim_first_admin', { p_name: name })
+
+export const createStaff = (phone, password, name, role) =>
+  rpc('admin_create_staff', { p_phone: phone, p_password: password, p_name: name, p_role: role })
+
+export const updateStaff = (userId, name, role, active) =>
+  rpc('admin_update_staff', { p_user_id: userId, p_name: name, p_role: role, p_active: active })
+
+export const setStaffPassword = (userId, password) =>
+  rpc('admin_set_staff_password', { p_user_id: userId, p_password: password })

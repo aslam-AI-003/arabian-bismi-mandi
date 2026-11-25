@@ -10,7 +10,13 @@ import Reports from './pages/Reports'
 import Settings from './pages/Settings'
 import Offers from './pages/Offers'
 import Login from './pages/Login'
+import Tables from './pages/Tables'
+import Expenses from './pages/Expenses'
+import Staff from './pages/Staff'
+import Setup, { AccessMessage } from './pages/Setup'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { SettingsProvider, useAppSettings } from './context/SettingsContext'
+import { ConnectionProvider } from './context/ConnectionContext'
 import { CartProvider } from './context/CartContext'
 import { LanguageProvider } from './context/LanguageContext'
 
@@ -22,12 +28,25 @@ function FullScreenLoader() {
   )
 }
 
-// Blocks access to everything except /login until a user is signed in
+// Blocks access to everything except /login until a user is signed in,
+// then checks the staff profile and first-time setup.
 function RequireAuth({ children }) {
-  const { isAuthenticated, loading } = useAuth()
+  const { isAuthenticated, loading, staff, isAdmin, profileError } = useAuth()
+  const { ready, setupDone } = useAppSettings()
   if (loading) return <FullScreenLoader />
   if (!isAuthenticated) return <Navigate to="/login" replace />
+  if (profileError) return <AccessMessage kind="dbUpdateNeeded" />
+  if (!staff) return <Setup mode="claim" />
+  if (!staff.is_active) return <AccessMessage kind="profileDisabled" />
+  if (!ready) return <FullScreenLoader />
+  if (isAdmin && !setupDone) return <Setup mode="setup" />
   return children
+}
+
+// Admin-only pages send cashiers to billing
+function AdminOnly({ children }) {
+  const { isAdmin } = useAuth()
+  return isAdmin ? children : <Navigate to="/pos" replace />
 }
 
 // If already signed in, don't show the login page again
@@ -42,6 +61,8 @@ function App() {
   return (
     <LanguageProvider>
       <AuthProvider>
+        <SettingsProvider>
+        <ConnectionProvider>
         <CartProvider>
           <BrowserRouter>
           <Toaster 
@@ -71,17 +92,23 @@ function App() {
             <Route path="/login" element={<RedirectIfAuthed><Login /></RedirectIfAuthed>} />
             <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
               <Route index element={<Navigate to="/dashboard" replace />} />
-              <Route path="dashboard" element={<Dashboard />} />
+              <Route path="dashboard" element={<AdminOnly><Dashboard /></AdminOnly>} />
               <Route path="pos" element={<POS />} />
+              <Route path="tables" element={<Tables />} />
               <Route path="orders" element={<Orders />} />
-              <Route path="menu" element={<Menu />} />
-              <Route path="reports" element={<Reports />} />
-              <Route path="settings" element={<Settings />} />
-              <Route path="offers" element={<Offers />} />
+              <Route path="menu" element={<AdminOnly><Menu /></AdminOnly>} />
+              <Route path="reports" element={<AdminOnly><Reports /></AdminOnly>} />
+              <Route path="expenses" element={<AdminOnly><Expenses /></AdminOnly>} />
+              <Route path="staff" element={<AdminOnly><Staff /></AdminOnly>} />
+              <Route path="settings" element={<AdminOnly><Settings /></AdminOnly>} />
+              <Route path="offers" element={<AdminOnly><Offers /></AdminOnly>} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Route>
           </Routes>
           </BrowserRouter>
         </CartProvider>
+        </ConnectionProvider>
+        </SettingsProvider>
       </AuthProvider>
     </LanguageProvider>
   )

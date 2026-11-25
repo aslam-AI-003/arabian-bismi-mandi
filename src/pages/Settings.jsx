@@ -20,9 +20,12 @@ import {
   printTestPage,
 } from '../lib/thermalPrinter'
 import toast from 'react-hot-toast'
+import BillingSettings from '../components/BillingSettings'
+import { useAppSettings } from '../context/SettingsContext'
 
 export default function Settings() {
   const { t, language, toggleLanguage } = useLanguage()
+  const { refresh: refreshAppSettings } = useAppSettings()
   
   // Printer state
   const [printerConnected, setPrinterConnected] = useState(false)
@@ -86,12 +89,15 @@ export default function Settings() {
   const handleSaveRestaurantSettings = async () => {
     setSavingSettings(true)
     try {
-      for (const [key, value] of Object.entries(restaurantSettings)) {
+      // Only this card's fields; billing/permission keys are saved by BillingSettings.
+      const ownKeys = ['restaurant_name', 'restaurant_address', 'restaurant_phone', 'currency_symbol']
+      for (const [key, value] of Object.entries(restaurantSettings).filter(([k]) => ownKeys.includes(k))) {
         await supabase
           .from('settings')
           .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
       }
       toast.success(language === 'ta' ? 'அமைப்புகள் சேமிக்கப்பட்டன!' : 'Settings saved!')
+      refreshAppSettings()
     } catch (error) {
       toast.error(language === 'ta' ? 'சேமிப்பு தோல்வி' : 'Failed to save settings')
     }
@@ -318,6 +324,9 @@ export default function Settings() {
           </div>
         )}
       </div>
+
+      {/* BILLING, PERMISSIONS, EXPENSE CATEGORIES */}
+      <BillingSettings />
 
       {/* ============================================ */}
       {/* PRINTER SETTINGS */}

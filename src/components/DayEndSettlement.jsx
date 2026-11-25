@@ -3,7 +3,8 @@ import {
   Wallet, Plus, Trash2, Loader2, CheckCircle2, XCircle, AlertCircle,
   Banknote, ArrowDown, ArrowUp, Calculator, Lock, History
 } from 'lucide-react'
-import { getDailySales, getSettlement, upsertSettlement, getCashOuts, addCashOut, deleteCashOut, getSettlements } from '../lib/supabase'
+import { getDailySales, getSettlement, upsertSettlement, getCashOuts, addCashOut, deleteCashOut, getSettlements, getPaymentsByDateRange } from '../lib/supabase'
+import { netByMethod } from '../lib/billing'
 import { useLanguage } from '../context/LanguageContext'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
@@ -55,16 +56,17 @@ export default function DayEndSettlement() {
   }
 
   const fetchSales = async () => {
-    const { data } = await getDailySales(new Date())
+    const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0)
+    const dayEnd = new Date(); dayEnd.setHours(23, 59, 59, 999)
+    const [{ data }, { data: ledger }] = await Promise.all([
+      getDailySales(new Date()),
+      getPaymentsByDateRange(dayStart.toISOString(), dayEnd.toISOString()),
+    ])
     if (data) {
-      let cash = 0, card = 0, upi = 0
-      data.forEach(order => {
-        const amt = parseFloat(order.total_amount) || 0
-        if (order.payment_method === 'CASH') cash += amt
-        else if (order.payment_method === 'CARD') card += amt
-        else if (order.payment_method === 'UPI') upi += amt
-        else cash += amt
-      })
+      // Money received today by method (split payments, balances collected
+      // for older bills, minus refunds). Cancelled orders are left out.
+      const net = netByMethod((ledger || []).filter(p => p.orders?.order_status !== 'CANCELLED'))
+      const cash = net.CASH, card = net.CARD, upi = net.UPI
       setSalesData({
         cashSales: cash,
         cardSales: card,

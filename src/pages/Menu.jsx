@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Plus, Edit2, Trash2, Search, Loader2, X, Save } from 'lucide-react'
+import { Plus, Edit2, Trash2, Search, Loader2, X, Save, Upload } from 'lucide-react'
+import MenuImportModal from '../components/MenuImportModal'
 import { getCategories, getMenuItems, createMenuItem, updateMenuItem, deleteMenuItem } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { useLanguage } from '../context/LanguageContext'
@@ -23,6 +24,7 @@ export default function Menu() {
   const [editingItem, setEditingItem] = useState(null)
   const [formData, setFormData] = useState(emptyItem)
   const [saving, setSaving] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const { t, language } = useLanguage()
 
   useEffect(() => {
@@ -140,11 +142,23 @@ export default function Menu() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row gap-4 justify-between">
         <h1 className="text-2xl font-semibold text-cream">{t('menuManagement')}</h1>
-        <button onClick={handleAdd} className="btn-primary flex items-center gap-2">
-          <Plus size={20} />
-          {t('addItem')}
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowImport(true)} className="btn-secondary flex items-center gap-2">
+            <Upload size={18} />
+            {t('importCsv')}
+          </button>
+          <button onClick={handleAdd} className="btn-primary flex items-center gap-2">
+            <Plus size={20} />
+            {t('addItem')}
+          </button>
+        </div>
       </div>
+      {showImport && (
+        <MenuImportModal
+          onClose={() => setShowImport(false)}
+          onDone={() => { setShowImport(false); fetchData() }}
+        />
+      )}
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4">

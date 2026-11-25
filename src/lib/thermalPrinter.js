@@ -1,3 +1,4 @@
+import { receiptExtras } from './billing'
 /**
  * Thermal Printer Integration for Arabian Bismi Mandi POS
  *
@@ -401,6 +402,10 @@ function generateReceiptBytes(order, settings = {}) {
   if (order.discount_amount > 0) {
     addText(formatRow('Discount', `-Rs.${parseFloat(order.discount_amount).toFixed(2)}`))
   }
+
+  const extras = receiptExtras(order)
+  if (extras.parcel > 0) addText(formatRow('Parcel charge', `Rs.${extras.parcel.toFixed(2)}`))
+  if (extras.roundOff !== 0) addText(formatRow('Round off', `${extras.roundOff > 0 ? '+' : '-'}Rs.${Math.abs(extras.roundOff).toFixed(2)}`))
   
   addDashLine()
   
@@ -414,8 +419,16 @@ function generateReceiptBytes(order, settings = {}) {
   addDashLine()
   
   // Payment
-  addText(formatRow('Payment', order.payment_method || 'CASH'))
+  addText(formatRow('Payment', extras.paymentLabel))
+  extras.splitLines.forEach((l) => addText(formatRow(`  ${l.label}`, `Rs.${l.amount.toFixed(2)}`)))
   addText(formatRow('Status', order.payment_status || 'PAID'))
+  if (extras.due > 0) {
+    addText(formatRow('Paid', `Rs.${extras.paid.toFixed(2)}`))
+    addCmd(COMMANDS.BOLD_ON)
+    addText(formatRow('BALANCE DUE', `Rs.${extras.due.toFixed(2)}`))
+    addCmd(COMMANDS.BOLD_OFF)
+  }
+  if (extras.refunded > 0) addText(formatRow('Refunded', `Rs.${extras.refunded.toFixed(2)}`))
   
   addLine()
   
@@ -493,6 +506,7 @@ export function printReceiptSilent(order, settings = {}) {
   const restaurantAddress = settings.restaurant_address || 'Near Kovilady Bus Stand, Main Road, Chakkarapalli'
   const restaurantPhone = settings.restaurant_phone || '9894092449 | 9025499668'
   const paperWidth = printerConfig.paperWidth === 58 ? '58mm' : '80mm'
+  const htmlExtras = receiptExtras(order)
 
   const orderDate = new Date(order.created_at)
   const dateStr = orderDate.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: '2-digit' })
@@ -619,6 +633,8 @@ export function printReceiptSilent(order, settings = {}) {
           <span>-₹${parseFloat(order.discount_amount).toFixed(2)}</span>
         </div>
         ` : ''}
+        ${htmlExtras.parcel > 0 ? `<div class="row"><span>Parcel charge</span><span>₹${htmlExtras.parcel.toFixed(2)}</span></div>` : ''}
+        ${htmlExtras.roundOff !== 0 ? `<div class="row"><span>Round off</span><span>${htmlExtras.roundOff > 0 ? '+' : '-'}₹${Math.abs(htmlExtras.roundOff).toFixed(2)}</span></div>` : ''}
         <hr class="double-divider" />
         <div class="row total-row">
           <span>TOTAL</span>
@@ -630,9 +646,12 @@ export function printReceiptSilent(order, settings = {}) {
       
       <div class="order-info">
         <div class="row small">
-          <span>Payment: ${order.payment_method || 'CASH'}</span>
+          <span>Payment: ${htmlExtras.paymentLabel}</span>
           <span>${order.payment_status || 'PAID'}</span>
         </div>
+        ${htmlExtras.splitLines.map((l) => `<div class="row small"><span>&nbsp;&nbsp;${l.label}</span><span>₹${l.amount.toFixed(2)}</span></div>`).join('')}
+        ${htmlExtras.due > 0 ? `<div class="row small"><span>Paid</span><span>₹${htmlExtras.paid.toFixed(2)}</span></div><div class="row bold"><span>BALANCE DUE</span><span>₹${htmlExtras.due.toFixed(2)}</span></div>` : ''}
+        ${htmlExtras.refunded > 0 ? `<div class="row small"><span>Refunded</span><span>₹${htmlExtras.refunded.toFixed(2)}</span></div>` : ''}
       </div>
       
       <hr class="divider" />

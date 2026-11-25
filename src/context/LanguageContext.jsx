@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react'
+import { extraTranslations } from './translationsExtra'
 
 const translations = {
   en: {
@@ -248,6 +249,11 @@ const translations = {
     cartIsEmpty: 'கார்ட் காலியாக உள்ளது!',
     pleaseEnterTable: 'டேபிள் எண் உள்ளிடவும்!',
   }
+}
+
+// New feature labels; existing labels above take priority.
+for (const lang of Object.keys(translations)) {
+  translations[lang] = { ...extraTranslations[lang], ...translations[lang] }
 }
 
 const LanguageContext = createContext()
