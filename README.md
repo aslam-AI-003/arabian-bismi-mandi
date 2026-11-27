@@ -19,7 +19,7 @@ If you are developing a production application, we recommend using TypeScript wi
 
 # Arabian Bismi POS: features added from SIP N' GOSSIP
 
-Tables, staff roles (admin/cashier), split and part payments, pending balance
+Staff roles (admin/cashier), split and part payments, pending balance
 collection, refunds (admin only) with a payment ledger, expenses, discount
 (% or ₹), parcel charge, round off, report export (CSV/Excel/PDF), menu CSV
 import, a live online/offline check with duplicate-bill protection, and a
@@ -37,9 +37,13 @@ first-time setup screen.
    and closes old open orders that are already paid.
    Then run `database/receipt_cash_change_update.sql`. It saves the cash the
    customer handed over, for the "Cash received / Change" receipt line.
+   Then run `database/item_profit_update.sql`. It adds admin-only cost
+   prices (Menu → Cost prices), saves the cost on each bill line for the
+   Reports → Profit tab, and stores the 2 owner WhatsApp numbers.
 3. Deploy the app (needs Node 20.19+ to build).
 4. Sign in as an admin. The first-time setup screen appears once: check the
-   details and create the tables.
+   restaurant details. (Table tracking was removed; Dine In uses a table
+   number box. Old orders keep their table numbers.)
 5. Add cashiers under **Staff** (mobile number + password; no email is sent).
 
 New defaults keep billing the same as before: parcel charge 0, round off off,

@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { useAppSettings } from '../context/SettingsContext'
 import { useLanguage } from '../context/LanguageContext'
 import {
-  signOut, getBootstrapStatus, claimFirstAdmin, saveSettings, getTables, createTables,
+  signOut, getBootstrapStatus, claimFirstAdmin, saveSettings,
 } from '../lib/supabase'
 import { dbErrorMessage } from '../lib/billing'
 import bismiLogo from '../assets/Bismi_Logo.jpg'
@@ -103,13 +103,7 @@ function FirstTimeSetup() {
     parcel_charge: settings.parcel_charge || '0',
     round_off: settings.round_off === 'true',
   })
-  const [tableCount, setTableCount] = useState(10)
-  const [existingTables, setExistingTables] = useState(null)
   const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    getTables(true).then(({ data }) => setExistingTables(data?.length || 0))
-  }, [])
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
 
@@ -117,12 +111,6 @@ function FirstTimeSetup() {
     e.preventDefault()
     setBusy(true)
     try {
-      const count = Math.min(Math.max(parseInt(tableCount, 10) || 0, 0), 100)
-      if (existingTables === 0 && count > 0) {
-        const rows = Array.from({ length: count }, (_, i) => ({ name: `T${i + 1}`, display_order: i + 1 }))
-        const { error } = await createTables(rows)
-        if (error) throw error
-      }
       const parcel = Math.max(Number(form.parcel_charge) || 0, 0)
       const { error } = await saveSettings({
         restaurant_name: form.restaurant_name.trim(),
@@ -158,24 +146,14 @@ function FirstTimeSetup() {
           <label className="text-muted text-sm mb-1 block">{language === 'ta' ? 'தொலைபேசி' : 'Phone Numbers'}</label>
           <input className="input" value={form.restaurant_phone} onChange={set('restaurant_phone')} />
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-muted text-sm mb-1 block">{t('numberOfTables')}</label>
-            {existingTables > 0 ? (
-              <p className="input bg-transparent">{existingTables} ✓</p>
-            ) : (
-              <input type="number" min="0" max="100" className="input" value={tableCount} onChange={(e) => setTableCount(e.target.value)} />
-            )}
-          </div>
-          <div>
-            <label className="text-muted text-sm mb-1 block">{t('parcelCharge')} (₹ / item)</label>
-            <input type="number" min="0" step="0.5" className="input" value={form.parcel_charge} onChange={set('parcel_charge')} />
-          </div>
+        <div>
+          <label className="text-muted text-sm mb-1 block">{t('parcelCharge')} (₹ / item)</label>
+          <input type="number" min="0" step="0.5" className="input" value={form.parcel_charge} onChange={set('parcel_charge')} />
         </div>
         <label className="flex items-center gap-2 text-cream text-sm">
           <input type="checkbox" checked={form.round_off} onChange={set('round_off')} /> {t('roundOffDesc')}
         </label>
-        <button type="submit" disabled={busy || existingTables === null} className="btn-primary w-full flex items-center justify-center gap-2">
+        <button type="submit" disabled={busy} className="btn-primary w-full flex items-center justify-center gap-2">
           {busy && <Loader2 className="animate-spin" size={18} />} {t('finishSetup')}
         </button>
       </form>

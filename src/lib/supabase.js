@@ -454,44 +454,6 @@ export const getPendingBalanceOrders = async () => {
   return { data, error }
 }
 
-// Dining tables
-export const getTables = async (includeInactive = false) => {
-  let query = supabase
-    .from('dining_tables')
-    .select('*, active_order:orders!active_order_id(id, order_number, order_status, payment_status, total_amount, paid_amount, created_at, version, customer_name)')
-    .order('display_order')
-    .order('name')
-  if (!includeInactive) query = query.eq('is_active', true)
-  const { data, error } = await query
-  return { data, error }
-}
-
-export const createTables = async (rows) => {
-  const { data, error } = await supabase.from('dining_tables').insert(rows).select()
-  return { data, error }
-}
-
-export const updateTable = async (id, values) => {
-  const { data, error } = await supabase
-    .from('dining_tables')
-    .update({ ...values, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .select()
-    .single()
-  return { data, error }
-}
-
-export const deleteTable = async (id) => {
-  const { error } = await supabase.from('dining_tables').delete().eq('id', id)
-  return { error }
-}
-
-export const subscribeToTables = (callback) => supabase
-  .channel('dining_tables')
-  .on('postgres_changes', { event: '*', schema: 'public', table: 'dining_tables' }, callback)
-  .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, callback)
-  .subscribe()
-
 // Expenses
 export const getExpenses = async (startDate, endDate) => {
   const { data, error } = await supabase
@@ -646,4 +608,69 @@ export const getCompareData = async (from, to, fromDate, toDate) => {
     getExpenses(fromDate, toDate),
   ])
   return { data: { orders: o.data || [], ledger: p.data || [], expenses: e.data || [] }, error: o.error || p.error || e.error }
+}
+
+// ============================================
+// ITEM PROFIT (see database/item_profit_update.sql)
+// ============================================
+/** Map menu_item_id -> cost price (admins only). */
+export const getItemCosts = async () => {
+  const { data, error } = await supabase.from('pos_item_costs').select('menu_item_id, cost_price')
+  return { data: new Map((data || []).map((r) => [r.menu_item_id, Number(r.cost_price)])), error }
+}
+
+/** rows: [{ menu_item_id, cost_price }]; cost_price null/'' removes the cost. */
+export const saveItemCosts = async (rows) => {
+  const now = new Date().toISOString()
+  const set = rows.filter((r) => r.cost_price !== null && r.cost_price !== '').map((r) => ({ menu_item_id: r.menu_item_id, cost_price: r.cost_price, updated_at: now }))
+  const clear = rows.filter((r) => r.cost_price === null || r.cost_price === '').map((r) => r.menu_item_id)
+  if (set.length) {
+    const { error } = await supabase.from('pos_item_costs').upsert(set, { onConflict: 'menu_item_id' })
+    if (error) return { error }
+  }
+  if (clear.length) {
+    const { error } = await supabase.from('pos_item_costs').delete().in('menu_item_id', clear)
+    if (error) return { error }
+  }
+  return { error: null }
+}
+
+export const getPrivateSettings = async () => {
+  const { data, error } = await supabase.from('pos_private_settings').select('key, value')
+  return { data: Object.fromEntries((data || []).map((r) => [r.key, r.value])), error }
+}
+
+export const savePrivateSettings = async (map) => {
+  const now = new Date().toISOString()
+  const rows = Object.entries(map).map(([key, value]) => ({ key, value: value == null ? '' : String(value), updated_at: now }))
+  const { error } = await supabase.from('pos_private_settings').upsert(rows, { onConflict: 'key' })
+  return { error }
+}
+
+export const getProfitOrders = (from, to) => fetchAllPages(() => supabase
+  .from('orders')
+  .select('id, order_status, subtotal, discount_amount, created_at, order_items(menu_item_id, item_name, variant, quantity, total_price, unit_cost)')
+  .eq('order_status', 'COMPLETED')
+  .gte('created_at', from)
+  .lte('created_at', to)
+  .order('created_at', { ascending: true }))
+
+/** Set of menu_item_ids on completed bills in [from, to]. */
+export const getSoldItemIds = async (from, to) => {
+  const { data, error } = await fetchAllPages(() => supabase
+    .from('orders')
+    .select('order_items(menu_item_id)')
+    .eq('order_status', 'COMPLETED')
+    .gte('created_at', from)
+    .lte('created_at', to)
+    .order('created_at', { ascending: true }))
+  return { data: new Set((data || []).flatMap((o) => (o.order_items || []).map((i) => i.menu_item_id))), error }
+}
+
+export const getMenuForCosts = async () => {
+  const { data, error } = await supabase
+    .from('menu_items')
+    .select('id, name, variant, price, is_available, category_id, categories(name, display_order)')
+    .order('name')
+  return { data: data || [], error }
 }

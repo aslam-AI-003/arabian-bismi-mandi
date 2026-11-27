@@ -10,7 +10,6 @@ import Reports from './pages/Reports'
 import Settings from './pages/Settings'
 import Offers from './pages/Offers'
 import Login from './pages/Login'
-import Tables from './pages/Tables'
 import Expenses from './pages/Expenses'
 import Staff from './pages/Staff'
 import Setup, { AccessMessage } from './pages/Setup'
@@ -94,7 +93,6 @@ function App() {
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<AdminOnly><Dashboard /></AdminOnly>} />
               <Route path="pos" element={<POS />} />
-              <Route path="tables" element={<Tables />} />
               <Route path="orders" element={<Orders />} />
               <Route path="menu" element={<AdminOnly><Menu /></AdminOnly>} />
               <Route path="reports" element={<AdminOnly><Reports /></AdminOnly>} />

@@ -21,6 +21,7 @@ import {
 } from '../lib/thermalPrinter'
 import toast from 'react-hot-toast'
 import BillingSettings from '../components/BillingSettings'
+import OwnerWhatsAppSettings from '../components/OwnerWhatsAppSettings'
 import { useAppSettings } from '../context/SettingsContext'
 
 export default function Settings() {
@@ -327,6 +328,9 @@ export default function Settings() {
 
       {/* BILLING, PERMISSIONS, EXPENSE CATEGORIES */}
       <BillingSettings />
+
+      {/* OWNER WHATSAPP REPORT NUMBERS */}
+      <OwnerWhatsAppSettings />
 
       {/* ============================================ */}
       {/* PRINTER SETTINGS */}

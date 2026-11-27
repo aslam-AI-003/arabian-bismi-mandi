@@ -17,7 +17,6 @@ import {
   Usb,
   Bluetooth,
   Printer as PrinterIcon,
-  Armchair,
   Receipt,
   Users,
 } from 'lucide-react'
@@ -100,7 +99,6 @@ export default function Layout() {
   const navItems = [
     { path: '/dashboard', icon: LayoutDashboard, labelKey: 'dashboard', adminOnly: true },
     { path: '/pos', icon: ShoppingCart, labelKey: 'pos' },
-    { path: '/tables', icon: Armchair, labelKey: 'tables' },
     { path: '/orders', icon: ClipboardList, labelKey: 'orders' },
     { path: '/reports', icon: BarChart3, labelKey: 'reports', adminOnly: true },
     { path: '/expenses', icon: Receipt, labelKey: 'expenses', adminOnly: true },

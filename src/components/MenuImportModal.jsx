@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabase'
 import { csvToMenu, importMenu } from '../lib/menuImport'
 import { dbErrorMessage } from '../lib/billing'
 
-const SAMPLE = 'Category,Item,Price,Description,Variant\nMandi,Chicken Mandi,150,,Single\nMojito & Drinks,Mint Mojito,90,,\n'
+const SAMPLE = 'Category,Item,Price,Description,Variant,Cost\nMandi,Chicken Mandi,150,,Single,80\nMojito & Drinks,Mint Mojito,90,,,25\n'
 
 export default function MenuImportModal({ onClose, onDone }) {
   const { t, language } = useLanguage()
@@ -29,7 +29,7 @@ export default function MenuImportModal({ onClose, onDone }) {
       const r = await importMenu(supabase, parsed.items)
       toast.success(language === 'ta'
         ? `${r.createdItems} பொருட்கள், ${r.createdCats} வகைகள் சேர்க்கப்பட்டன. ${r.skipped} ஏற்கனவே உள்ளன.`
-        : `Added ${r.createdItems} items and ${r.createdCats} categories. Skipped ${r.skipped} existing.`)
+        : `Added ${r.createdItems} items and ${r.createdCats} categories. Skipped ${r.skipped} existing.${r.costsSaved ? ` Saved ${r.costsSaved} cost prices.` : ''}`)
       onDone()
     } catch (err) {
       toast.error(dbErrorMessage(err, language))
@@ -71,6 +71,7 @@ export default function MenuImportModal({ onClose, onDone }) {
                       <td className="p-1.5 text-muted">{it.category}</td>
                       <td className="p-1.5 text-cream">{it.name}{it.variant ? ` (${it.variant})` : ''}</td>
                       <td className="p-1.5 text-right font-mono text-brand-gold">₹{it.price}</td>
+                      <td className="p-1.5 text-right font-mono text-muted">{it.cost != null ? `₹${it.cost}` : ''}</td>
                     </tr>
                   ))}
                 </tbody>

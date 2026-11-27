@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Plus, Edit2, Trash2, Search, Loader2, X, Save, Upload } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { Plus, Edit2, Trash2, Search, Loader2, X, Save, Upload, IndianRupee } from 'lucide-react'
 import MenuImportModal from '../components/MenuImportModal'
+import CostPricesModal from '../components/CostPricesModal'
 import { getCategories, getMenuItems, createMenuItem, updateMenuItem, deleteMenuItem } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { useLanguage } from '../context/LanguageContext'
@@ -25,6 +27,9 @@ export default function Menu() {
   const [formData, setFormData] = useState(emptyItem)
   const [saving, setSaving] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  // Reports → Profit links here with ?costs=1 to open the cost price list
+  const [showCosts, setShowCosts] = useState(() => searchParams.get('costs') === '1')
   const { t, language } = useLanguage()
 
   useEffect(() => {
@@ -143,6 +148,10 @@ export default function Menu() {
       <div className="flex flex-col sm:flex-row gap-4 justify-between">
         <h1 className="text-2xl font-semibold text-cream">{t('menuManagement')}</h1>
         <div className="flex gap-2">
+          <button onClick={() => setShowCosts(true)} className="btn-secondary flex items-center gap-2">
+            <IndianRupee size={18} />
+            {t('costPrices')}
+          </button>
           <button onClick={() => setShowImport(true)} className="btn-secondary flex items-center gap-2">
             <Upload size={18} />
             {t('importCsv')}
@@ -153,6 +162,7 @@ export default function Menu() {
           </button>
         </div>
       </div>
+      {showCosts && <CostPricesModal onClose={() => { setShowCosts(false); if (searchParams.get('costs')) setSearchParams({}, { replace: true }) }} />}
       {showImport && (
         <MenuImportModal
           onClose={() => setShowImport(false)}

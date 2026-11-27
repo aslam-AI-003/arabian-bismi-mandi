@@ -1,14 +1,14 @@
 import { useState } from 'react'
-import { BarChart3, Calculator } from 'lucide-react'
+import { BarChart3, IndianRupee } from 'lucide-react'
 import { useLanguage } from '../context/LanguageContext'
 import SalesReport from '../components/SalesReport'
-import DayClose from '../components/DayClose'
+import ProfitReport from '../components/ProfitReport'
 
-// Two tabs: Sales Report (SIP N' GOSSIP style, any period, exports) and
-// Day Close (one day's numbers, cash drawer settlement, day-end slip).
+// Two tabs: Sales Report (SIP N' GOSSIP style, any period, exports, WhatsApp
+// to owner) and Profit (item profit / food cost, expected vs actual).
 const TABS = [
   { id: 'sales', key: 'salesReportTab', icon: BarChart3 },
-  { id: 'dayclose', key: 'dayCloseTab', icon: Calculator },
+  { id: 'profit', key: 'profitTab', icon: IndianRupee },
 ]
 
 export default function Reports() {
@@ -31,7 +31,7 @@ export default function Reports() {
           ))}
         </div>
       </div>
-      {tab === 'sales' ? <SalesReport /> : <DayClose />}
+      {tab === 'sales' ? <SalesReport /> : <ProfitReport />}
     </div>
   )
 }

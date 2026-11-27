@@ -66,3 +66,17 @@ test('periods and comparison', () => {
   assert.equal(pctChange(50, 0), null)
   assert.deepEqual(headline({ orders, ledger, expenses }), { revenue: 399.5, bills: 2, avgBill: 199.75, expenses: 160.25, profit: 219.25 })
 })
+
+import { waNumber, ownerMessage, waLink } from './ownerReport.js'
+
+test('owner WhatsApp message and number', () => {
+  assert.equal(waNumber('98940 92449'), '919894092449')
+  assert.equal(waNumber('+91 98940-92449'), '919894092449')
+  assert.equal(waNumber('123'), '')
+  const r = buildReport({ orders, ledger, expenses })
+  const msg = ownerMessage({ restaurant: 'Arabian Bismi', rangeLabel: '27 Nov 2026', r, unpaidAll: 29.5 })
+  for (const s of ['*Sales: ₹399.5*', 'Bills: 2', 'Cash: ₹250', 'UPI: ₹100', 'Refunds: ₹20', 'Cancelled: 1', '1. Chicken Mandi (Single) × 2 = ₹300', 'Expenses: ₹160.25', '*Est. profit: ₹219.25*', 'Unpaid (all open bills): ₹29.5']) {
+    assert.ok(msg.includes(s), s)
+  }
+  assert.match(waLink('9894092449', 'hi & bye'), /^https:\/\/wa\.me\/919894092449\?text=hi%20%26%20bye$/)
+})

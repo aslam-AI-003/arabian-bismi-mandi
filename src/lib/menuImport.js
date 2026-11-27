@@ -1,5 +1,5 @@
-// CSV menu import. Format: Category,Item,Price,Description,Variant
-// (Description and Variant are optional). A header row is detected and its
+// CSV menu import. Format: Category,Item,Price,Description,Variant,Cost
+// (Description, Variant and Cost are optional; Cost = cost of one plate). A header row is detected and its
 // column names decide the order.
 
 /** Minimal RFC 4180 CSV parser (quotes, commas and newlines inside quotes). */
@@ -24,7 +24,7 @@ export function parseCsv(text) {
   return out.map((r) => r.map((c) => c.trim())).filter((r) => r.some(Boolean))
 }
 
-const DEFAULT_COLS = { category: 0, name: 1, price: 2, description: 3, variant: 4 }
+const DEFAULT_COLS = { category: 0, name: 1, price: 2, description: 3, variant: 4, cost: 5 }
 
 function headerColumns(row) {
   const lower = row.map((c) => c.toLowerCase())
@@ -33,7 +33,8 @@ function headerColumns(row) {
   return {
     category: find(/category/),
     name: find(/^(item|name|item name)$/) >= 0 ? find(/^(item|name|item name)$/) : find(/item|name/),
-    price: find(/price|rate|amount/),
+    price: find(/^(price|rate|amount|selling price|mrp)$/) >= 0 ? find(/^(price|rate|amount|selling price|mrp)$/) : find(/price|rate|amount/),
+    cost: find(/cost/),
     description: find(/desc/),
     variant: find(/variant|size|portion/),
   }
@@ -60,7 +61,13 @@ export function csvToMenu(text) {
       errors.push(`Line ${i + 1}: "${name}" has an invalid price "${priceRaw}".`)
       return
     }
-    items.push({ category, name, price, description: get('description'), variant: get('variant') || null })
+    const costRaw = get('cost')
+    const cost = costRaw === '' ? null : Number(costRaw.replace(/[₹,\s]|rs\.?/gi, ''))
+    if (cost != null && (!Number.isFinite(cost) || cost < 0)) {
+      errors.push(`Line ${i + 1}: "${name}" has an invalid cost "${costRaw}".`)
+      return
+    }
+    items.push({ category, name, price, description: get('description'), variant: get('variant') || null, ...(cost != null ? { cost } : {}) })
   })
   return { items, errors }
 }
@@ -81,7 +88,8 @@ export async function importMenu(supabase, items) {
   if (itemRes.error) throw itemRes.error
 
   const catByName = new Map(catRes.data.map((c) => [key(c.name), c]))
-  const existing = new Set(itemRes.data.map((m) => key(m.category_id, m.name, m.variant)))
+  const existing = new Map(itemRes.data.map((m) => [key(m.category_id, m.name, m.variant), m.id]))
+  const costRows = [] // costs for items that already exist (cost may be updated)
   let maxOrder = catRes.data.reduce((m, c) => Math.max(m, c.display_order || 0), 0)
   let createdCats = 0
   let skipped = 0
@@ -102,9 +110,14 @@ export async function importMenu(supabase, items) {
       createdCats += 1
     }
     const k = key(cat.id, it.name, it.variant)
-    if (existing.has(k)) { skipped += 1; continue }
-    existing.add(k)
+    if (existing.has(k)) {
+      skipped += 1
+      if (it.cost != null && existing.get(k)) costRows.push({ menu_item_id: existing.get(k), cost_price: it.cost })
+      continue
+    }
+    existing.set(k, null)
     toInsert.push({
+      _cost: it.cost,
       category_id: cat.id,
       name: it.name.trim(),
       variant: it.variant || null,
@@ -115,8 +128,16 @@ export async function importMenu(supabase, items) {
   }
 
   for (let i = 0; i < toInsert.length; i += 200) {
-    const { error } = await supabase.from('menu_items').insert(toInsert.slice(i, i + 200))
+    const batch = toInsert.slice(i, i + 200)
+    const { data, error } = await supabase.from('menu_items').insert(batch.map(({ _cost, ...row }) => row)).select('id')
     if (error) throw error
+    ;(data || []).forEach((row, j) => { if (batch[j]._cost != null) costRows.push({ menu_item_id: row.id, cost_price: batch[j]._cost }) })
   }
-  return { createdCats, createdItems: toInsert.length, skipped }
+  let costsSaved = 0
+  if (costRows.length) {
+    const { error } = await supabase.from('pos_item_costs').upsert(costRows.map((r) => ({ ...r, updated_at: new Date().toISOString() })), { onConflict: 'menu_item_id' })
+    if (error) throw error
+    costsSaved = costRows.length
+  }
+  return { createdCats, createdItems: toInsert.length, skipped, costsSaved }
 }

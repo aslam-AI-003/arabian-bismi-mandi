@@ -18,7 +18,6 @@ export function CartProvider({ children }) {
   const [discountValue, setDiscountValue] = useState(0)
   const [paymentMethod, setPaymentMethod] = useState('CASH')
   const [notes, setNotes] = useState('')
-  const [tableId, setTableId] = useState(null)
   // One id per cart: retrying "Place order" returns the same bill instead of
   // creating a duplicate. A new id is made only when the cart is cleared.
   const [orderId, setOrderId] = useState(newId)
@@ -71,7 +70,6 @@ export function CartProvider({ children }) {
     setDiscountType(null)
     setDiscountValue(0)
     setNotes('')
-    setTableId(null)
     setEditingOrder(null)
     setOrderId(newId())
     setQuickPaymentId(newId())
@@ -87,7 +85,6 @@ export function CartProvider({ children }) {
       quantity: i.quantity,
     })))
     setOrderType(order.order_type)
-    setTableId(order.table_id || null)
     setTableNumber(order.table_number || '')
     setCustomerName(order.customer_name || '')
     setCustomerPhone(order.customer_phone || '')
@@ -125,8 +122,6 @@ export function CartProvider({ children }) {
     discountAmount,
     parcelCharge,
     roundOff,
-    tableId,
-    setTableId,
     orderId,
     quickPaymentId,
     editingOrder,

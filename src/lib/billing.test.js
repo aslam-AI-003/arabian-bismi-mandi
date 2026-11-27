@@ -97,3 +97,12 @@ test('receipt lines: bill no, cashier, per-payment lines with cash received / ch
   assert.equal(unitLine({ quantity: 2, unit_price: '20' }), '2 x ₹20.00')
   assert.equal(unitLine({ quantity: 1, unit_price: '20' }), '')
 })
+
+test('CSV import reads an optional Cost column', () => {
+  const { items: rows, errors } = csvToMenu('Category,Item,Price,Variant,Cost price\nMandi,Chicken Mandi,150,Single,80\nMandi,Beef Mandi,350,Single,\nMandi,Bad,100,,abc\n')
+  assert.equal(errors.length, 1)
+  assert.equal(rows[0].price, 150)
+  assert.equal(rows[0].cost, 80)
+  assert.equal(rows[0].variant, 'Single')
+  assert.equal('cost' in rows[1], false)
+})

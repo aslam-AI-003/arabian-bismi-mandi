@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Search, Plus, Minus, Trash2, UtensilsCrossed, Package, Truck, Loader2, SplitSquareHorizontal, Clock, X } from 'lucide-react'
 import { useCart } from '../context/CartContext'
-import { getCategories, getMenuItems, getTables, getOrderById, placeOrder, updateOrderItems } from '../lib/supabase'
+import { getCategories, getMenuItems, getOrderById, placeOrder, updateOrderItems } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { useLanguage } from '../context/LanguageContext'
 import { useAuth } from '../context/AuthContext'
@@ -13,12 +13,9 @@ import { dbErrorMessage } from '../lib/billing'
 import ReceiptModal from '../components/ReceiptModal'
 import PaymentModal from '../components/PaymentModal'
 
-const isClosed = (o) => !o || o.order_status === 'CANCELLED' || (o.order_status === 'COMPLETED' && ['PAID', 'REFUNDED'].includes(o.payment_status))
-
 export default function POS() {
   const [categories, setCategories] = useState([])
   const [menuItems, setMenuItems] = useState([])
-  const [tables, setTables] = useState([])
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
@@ -42,10 +39,9 @@ export default function POS() {
     fetchData()
   }, [])
 
-  // ?order=<id>: open a running order to add items. ?table=<id>: new dine-in order for that table.
+  // ?order=<id>: open a running (unpaid) order to add items.
   useEffect(() => {
     const orderParam = searchParams.get('order')
-    const tableParam = searchParams.get('table')
     if (orderParam && orderParam !== editing?.id) {
       getOrderById(orderParam).then(({ data, error }) => {
         if (error || !data) { toast.error(dbErrorMessage(error, language)); return }
@@ -56,22 +52,15 @@ export default function POS() {
         cart.loadOrder(data)
       })
       setSearchParams({}, { replace: true })
-    } else if (tableParam) {
-      if (!editing) {
-        cart.setOrderType('DINE_IN')
-        cart.setTableId(tableParam)
-      }
-      setSearchParams({}, { replace: true })
     }
   }, [searchParams])
 
   const fetchData = async () => {
     setLoading(true)
     try {
-      const [catResult, menuResult, tableResult] = await Promise.all([
+      const [catResult, menuResult] = await Promise.all([
         getCategories(),
-        getMenuItems(),
-        getTables(),
+        getMenuItems()
       ])
       
       if (catResult.data) {
@@ -80,19 +69,11 @@ export default function POS() {
       if (menuResult.data) {
         setMenuItems(menuResult.data)
       }
-      if (tableResult.data) {
-        setTables(tableResult.data)
-      }
     } catch (error) {
       console.error('Error fetching data:', error)
       toast.error('Failed to load menu')
     }
     setLoading(false)
-  }
-
-  const refreshTables = async () => {
-    const { data } = await getTables()
-    if (data) setTables(data)
   }
 
   const filteredItems = menuItems.filter(item => {
@@ -110,19 +91,13 @@ export default function POS() {
     })
   }
 
-  const selectedTable = tables.find((tb) => tb.id === cart.tableId)
-
   const validateCart = () => {
     if (cart.items.length === 0) {
       toast.error('Cart is empty!')
       return false
     }
     if (cart.orderType === 'DINE_IN') {
-      if (tables.length > 0 && !cart.tableId && !editing) {
-        toast.error(t('selectTable'))
-        return false
-      }
-      if (tables.length === 0 && !cart.tableNumber && !editing) {
+      if (!cart.tableNumber && !editing) {
         toast.error('Please enter table number!')
         return false
       }
@@ -143,7 +118,6 @@ export default function POS() {
     const completeOrder = { ...order, order_items: [...(order.order_items || [])] }
     setLastOrder(completeOrder)
     cart.clearCart()
-    refreshTables()
 
     // Auto-print if enabled in settings
     const config = loadPrinterConfig()
@@ -171,7 +145,7 @@ export default function POS() {
       const orderData = {
         id: cart.orderId,
         order_type: cart.orderType,
-        table_id: cart.orderType === 'DINE_IN' ? cart.tableId : null,
+        table_id: null,
         table_number: cart.orderType === 'DINE_IN' ? (cart.tableNumber || null) : null,
         customer_name: cart.customerName || null,
         customer_phone: cart.customerPhone || null,
@@ -188,7 +162,6 @@ export default function POS() {
     } catch (error) {
       console.error('Error placing order:', error)
       toast.error(dbErrorMessage(error, language))
-      if (/TABLE_OCCUPIED/.test(error?.message || '')) refreshTables()
       throw error
     } finally {
       busy.current = false
@@ -232,7 +205,7 @@ export default function POS() {
       toast.success(`${data.order_number} ✓`)
       setLastOrder(data)
       cart.clearCart()
-      navigate('/tables')
+      navigate('/orders')
     } catch (error) {
       toast.error(dbErrorMessage(error, language))
     } finally {
@@ -361,49 +334,18 @@ export default function POS() {
           </div>
         </div>
 
-        {/* Table (Dine In): pick from tables if set up, else type the number as before */}
+        {/* Table Number (Dine In) */}
         {cart.orderType === 'DINE_IN' && !editing && (
-          tables.length > 0 ? (
-            <div className="mb-3">
-              <label className="text-muted text-sm mb-1 block">{t('selectTable')} *</label>
-              <div className="grid grid-cols-5 gap-1.5 max-h-[120px] overflow-y-auto">
-                {tables.map((tb) => {
-                  const busyTable = !isClosed(tb.active_order)
-                  const selected = cart.tableId === tb.id
-                  return (
-                    <button
-                      key={tb.id}
-                      type="button"
-                      disabled={busyTable}
-                      onClick={() => { cart.setTableId(tb.id); cart.setTableNumber(tb.name) }}
-                      title={busyTable ? `${t('occupied')} · ${tb.active_order?.order_number}` : t('free')}
-                      className={`py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                        selected
-                          ? 'bg-brand-gold text-dark-primary border-brand-gold'
-                          : busyTable
-                            ? 'bg-red-500/10 text-red-400/70 border-red-500/30 cursor-not-allowed'
-                            : 'bg-green-500/10 text-green-300 border-green-500/30 hover:bg-green-500/20'
-                      }`}
-                    >
-                      {tb.name}
-                    </button>
-                  )
-                })}
-              </div>
-              {selectedTable && <p className="text-brand-gold text-xs mt-1">{t('table')}: {selectedTable.name}</p>}
-            </div>
-          ) : (
-            <div className="mb-3">
-              <label className="text-muted text-sm mb-1 block">{t('tableNumber')} *</label>
-              <input
-                type="number"
-                value={cart.tableNumber}
-                onChange={(e) => cart.setTableNumber(e.target.value)}
-                className="input"
-                placeholder={t('enterTableNumber')}
-              />
-            </div>
-          )
+          <div className="mb-3">
+            <label className="text-muted text-sm mb-1 block">{t('tableNumber')} *</label>
+            <input
+              type="number"
+              value={cart.tableNumber}
+              onChange={(e) => cart.setTableNumber(e.target.value)}
+              className="input"
+              placeholder={t('enterTableNumber')}
+            />
+          </div>
         )}
 
         {/* Customer Info - Shown for ALL order types */}
