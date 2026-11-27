@@ -8,17 +8,18 @@ import bismiLogo from '../assets/Bismi_Logo.jpg'
 import {
   printReceipt,
   printReceiptSilent,
-  isPrinterConnected,
-  connectPrinterBluetooth,
   onPrinterStatusChange,
   reconnectBluetoothPrinter,
+  getPrintRoute,
+  isRouteReady,
+  connectForRoute,
 } from '../lib/thermalPrinter'
 import { receiptExtras, unitLine } from '../lib/billing'
 
 export default function ReceiptModal({ order, onClose, settings = {} }) {
   const receiptRef = useRef(null)
   const [generating, setGenerating] = useState(false)
-  const [printerConnected, setPrinterConnected] = useState(isPrinterConnected())
+  const [printerConnected, setPrinterConnected] = useState(isRouteReady())
   const [printing, setPrinting] = useState(false)
 
   const restaurantName = settings.restaurant_name || 'Arabian Bismi Mandi Restaurant'
@@ -26,21 +27,22 @@ export default function ReceiptModal({ order, onClose, settings = {} }) {
   const restaurantPhone = settings.restaurant_phone || '9894092449 | 9025499668'
 
   useEffect(() => {
-    reconnectBluetoothPrinter()
-    return onPrinterStatusChange(({ connected }) => setPrinterConnected(connected))
+    if (getPrintRoute() === 'bluetooth') reconnectBluetoothPrinter()
+    return onPrinterStatusChange(() => setPrinterConnected(isRouteReady()))
   }, [])
 
   if (!order) return null
   const extras = receiptExtras(order)
 
-  // Bluetooth printer only. Not connected -> this tap opens the printer list
+  // Prints with this device's print method (Settings → Printer setup).
+  // Bluetooth / PC port not connected -> this tap opens the printer list
   // (the browser needs a tap to do that), then prints.
   const handleThermalPrint = async () => {
     setPrinting(true)
     try {
       let result = await printReceipt(order, settings)
       if (result.needsConnect) {
-        const c = await connectPrinterBluetooth()
+        const c = await connectForRoute(result.route)
         if (!c.success) { toast.error(c.message); return }
         result = await printReceipt(order, settings)
       }
@@ -408,9 +410,11 @@ _"Good Food Brings People Together"_
               <span className="text-[10px]">WhatsApp</span>
             </button>
           </div>
-          <button type="button" onClick={handleSilentPrint} className="w-full text-center text-muted text-[11px] underline hover:text-cream">
-            Bluetooth not working? Print using the phone's print option
-          </button>
+          {getPrintRoute() !== 'system' && (
+            <button type="button" onClick={handleSilentPrint} className="w-full text-center text-muted text-[11px] underline hover:text-cream">
+              Printer not working? Print using the device's print option
+            </button>
+          )}
 
           {/* Native Share (Mobile) */}
           {'share' in navigator && (

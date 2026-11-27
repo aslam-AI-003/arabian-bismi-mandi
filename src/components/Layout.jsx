@@ -22,7 +22,7 @@ import {
 import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
 import { useLanguage } from '../context/LanguageContext'
-import { isPrinterConnected, getPrinterConnectionType, onPrinterStatusChange, connectPrinterBluetooth, reconnectBluetoothPrinter, getConnectedPrinterName } from '../lib/thermalPrinter'
+import { getPrinterConnectionType, onPrinterStatusChange, reconnectBluetoothPrinter, getConnectedPrinterName, getPrintRoute, isRouteReady, connectForRoute } from '../lib/thermalPrinter'
 import { signOut } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useConnection } from '../context/ConnectionContext'
@@ -36,10 +36,10 @@ function useOnlineStatus() {
 }
 
 function usePrinterStatus() {
-  const [status, setStatus] = useState({ connected: isPrinterConnected(), type: getPrinterConnectionType() })
+  const [status, setStatus] = useState({ connected: isRouteReady(), type: getPrinterConnectionType() })
   useEffect(() => {
-    reconnectBluetoothPrinter()
-    return onPrinterStatusChange(({ connected, type }) => setStatus({ connected, type }))
+    if (getPrintRoute() === 'bluetooth') reconnectBluetoothPrinter()
+    return onPrinterStatusChange(({ type }) => setStatus({ connected: isRouteReady(), type }))
   }, [])
   return status
 }
@@ -61,23 +61,23 @@ function StatusBadges() {
         <span className="hidden sm:inline">{online ? 'Online' : 'Offline'}</span>
       </span>
 
-      {/* Bluetooth printer status: tap to connect */}
+      {/* Printer status for this device's print method; tap to connect */}
       <button
         type="button"
         onClick={async () => {
-          if (printer.connected) return
-          const r = await connectPrinterBluetooth()
+          if (isRouteReady()) return
+          const r = await connectForRoute()
           if (r.success) toast.success(r.message)
           else toast.error(r.message)
         }}
-        title={printer.connected ? `Printer connected: ${getConnectedPrinterName()}` : 'Tap to connect the Bluetooth printer'}
+        title={printer.connected ? `Printer ready${getConnectedPrinterName() ? `: ${getConnectedPrinterName()}` : ''}` : 'Tap to connect the printer'}
         className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
           printer.connected ? 'bg-green-500/15 text-green-400 cursor-default' : 'bg-muted/15 text-muted hover:text-cream'
         }`}
       >
-        {printer.connected ? <Bluetooth size={14} /> : <PrinterIcon size={14} />}
+        {printer.connected && getPrintRoute() === 'bluetooth' ? <Bluetooth size={14} /> : <PrinterIcon size={14} />}
         <span className="hidden sm:inline">
-          {printer.connected ? 'Printer Connected' : 'Connect Printer'}
+          {printer.connected ? ({ rawbt: 'Printer: RawBT', system: 'Printer: device print', serial: 'Printer Connected', bluetooth: 'Printer Connected' }[getPrintRoute()]) : 'Connect Printer'}
         </span>
       </button>
     </div>

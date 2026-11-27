@@ -1,4 +1,4 @@
-import { receiptExtras, unitLine } from './billing'
+import { receiptExtras, unitLine } from './billing.js'
 /**
  * Thermal Printer Integration for Arabian Bismi Mandi POS
  *
@@ -83,7 +83,8 @@ let bleDevice = null
 let bleCharacteristic = null
 let printerConfig = {
   mode: 'silent', // 'silent' | 'serial' | 'bluetooth'
-  paperWidth: 80,  // 80mm or 58mm
+  paperWidth: 58,  // 58mm (2-inch mini printers) or 80mm
+  route: null,     // 'bluetooth' | 'rawbt' | 'serial' | 'system' (null = auto)
   autoPrint: false,
   openDrawer: false,
   printCopy: 1,
@@ -371,6 +372,21 @@ async function sendText(text) {
 /**
  * Generate ESC/POS receipt data for thermal printer
  */
+/**
+ * Thermal printers print plain ASCII only. Replace common symbols and drop
+ * anything else (Tamil letters, emoji) so the printer never prints junk.
+ */
+export function printerText(text) {
+  return String(text ?? '')
+    .replace(/₹/g, 'Rs.')
+    .replace(/[×✕]/g, 'x')
+    .replace(/[–—−]/g, '-')
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/…/g, '...')
+    .replace(/[^\x20-\x7E]/g, '')
+}
+
 function generateReceiptBytes(order, settings = {}) {
   const restaurantName = settings.restaurant_name || 'Arabian Bismi Mandi Restaurant'
   const restaurantAddress = settings.restaurant_address || 'Near Kovilady Bus Stand, Main Road, Chakkarapalli'
@@ -383,7 +399,7 @@ function generateReceiptBytes(order, settings = {}) {
   const addCmd = (cmd) => commands.push(...cmd)
   const addText = (text) => {
     const encoder = new TextEncoder()
-    commands.push(...encoder.encode(text + '\n'))
+    commands.push(...encoder.encode(printerText(text) + '\n'))
   }
   const addLine = () => addText('-'.repeat(paperWidth))
   const addDashLine = () => addText('='.repeat(paperWidth))
@@ -488,7 +504,7 @@ function generateReceiptBytes(order, settings = {}) {
   // Payment
   extras.paymentLines.forEach((l) => {
     addText(formatRow(l.label, `Rs.${l.amount.toFixed(2)}`))
-    if (l.note) addText(`  ${l.note.replace(/₹/g, 'Rs.')}`)
+    if (l.note) l.note.split(' / ').forEach((part) => addText(`  ${part}`)) // short lines for 58mm paper
   })
   if (extras.paymentLines.length === 0 && order.payment_status !== 'PENDING') addText(formatRow('Payment', extras.paymentLabel))
   if (extras.refunded > 0) addText(formatRow('Refunded', `-Rs.${extras.refunded.toFixed(2)}`))
@@ -754,10 +770,19 @@ export function printReceiptSilent(order, settings = {}) {
  */
 export async function printReceipt(order, settings = {}) {
   loadPrinterConfig()
-  // Bluetooth printer only. Try to reconnect the last printer first.
+  const route = getPrintRoute()
+  if (route === 'rawbt') return printViaRawBT(generateReceiptBytes(order, settings))
+  if (route === 'system') return printReceiptSilent(order, settings)
+  if (route === 'serial') {
+    if (!isPrinterConnected() || connectionType !== 'usb') {
+      return { success: false, needsConnect: true, route, message: 'Printer port not connected.' }
+    }
+    return await printReceiptSerial(order, settings)
+  }
+  // Direct Bluetooth: try to reconnect the last printer first.
   if (!isPrinterConnected()) await reconnectBluetoothPrinter()
   if (!isPrinterConnected()) {
-    return { success: false, needsConnect: true, message: 'Bluetooth printer not connected.' }
+    return { success: false, needsConnect: true, route: 'bluetooth', message: 'Bluetooth printer not connected.' }
   }
   return await printReceiptBluetooth(order, settings)
 }
@@ -789,4 +814,100 @@ export async function printTestPage() {
   }
   
   return await printReceipt(testOrder)
+}
+
+// ============================================
+// PRINT ROUTES ("Smart Print")
+// A website can only talk to Bluetooth printers directly in Chrome/Edge
+// (BLE printers). Other devices/printers use a route that works there:
+//   bluetooth - direct Web Bluetooth (Chrome/Edge on Android, Windows, Mac)
+//   rawbt     - Android, any browser: hands the receipt to the free RawBT
+//               app, which prints on Classic and BLE Bluetooth printers
+//   serial    - PC: printer paired in Windows (Bluetooth COM port) or USB
+//               cable, opened with Web Serial in Chrome/Edge
+//   system    - the device's own print dialog (printer installed in the OS)
+// ============================================
+
+export const RAWBT_PLAY_STORE = 'https://play.google.com/store/apps/details?id=ru.a402d.rawbtprinter'
+
+export function detectDevice(ua = typeof navigator !== 'undefined' ? navigator.userAgent : '') {
+  const iOS = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && typeof navigator !== 'undefined' && navigator.maxTouchPoints > 1)
+  const android = /Android/i.test(ua)
+  const os = iOS ? 'ios' : android ? 'android' : /Windows/i.test(ua) ? 'windows' : /Mac/i.test(ua) ? 'mac' : 'other'
+  const browser = /Edg\//.test(ua) ? 'edge' : /SamsungBrowser/i.test(ua) ? 'samsung' : /Firefox|FxiOS/i.test(ua) ? 'firefox' : /Chrome|CriOS/i.test(ua) ? 'chrome' : /Safari/i.test(ua) ? 'safari' : 'other'
+  return { os, browser, mobile: iOS || android }
+}
+
+export function routeSupport() {
+  const d = detectDevice()
+  return {
+    bluetooth: isBluetoothSupported(),
+    rawbt: d.os === 'android',
+    serial: isSerialSupported(),
+    system: true,
+  }
+}
+
+/** Best route for this device when the owner has not chosen one. */
+export function recommendedRoute() {
+  const d = detectDevice()
+  const sup = routeSupport()
+  if (d.os === 'android') return 'rawbt'        // works with Classic + BLE printers, any browser
+  if (d.os === 'ios') return sup.bluetooth ? 'bluetooth' : 'system'
+  if (sup.serial) return 'serial'               // Windows/Mac: paired printer COM port or USB
+  if (sup.bluetooth) return 'bluetooth'
+  return 'system'
+}
+
+export function getPrintRoute() {
+  loadPrinterConfig()
+  const r = printerConfig.route
+  return r && routeSupport()[r] ? r : recommendedRoute()
+}
+
+export function setPrintRoute(route) {
+  const c = savePrinterConfig({ route })
+  notifyPrinterStatusChange() // header badge follows the new route
+  return c
+}
+
+/** Ready to print without asking anything? */
+export function isRouteReady(route = getPrintRoute()) {
+  if (route === 'rawbt' || route === 'system') return true
+  if (route === 'serial') return isPrinterConnected() && connectionType === 'usb'
+  return isPrinterConnected() && connectionType === 'bluetooth'
+}
+
+/** Connect for the current route (bluetooth / serial need a button tap). */
+export async function connectForRoute(route = getPrintRoute()) {
+  if (route === 'serial') {
+    try { return await connectPrinter() } catch (e) { return { success: false, message: e.message } }
+  }
+  if (route === 'bluetooth') return connectPrinterBluetooth()
+  return { success: true, message: 'Ready' }
+}
+
+function toBase64(bytes) {
+  let bin = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(bin)
+}
+
+/** RawBT intent link for ESC/POS bytes (opens Play Store if RawBT is missing). */
+export function rawbtIntentUrl(bytes) {
+  return `intent:base64,${toBase64(bytes)}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;S.browser_fallback_url=${encodeURIComponent(RAWBT_PLAY_STORE)};end;`
+}
+
+export function printViaRawBT(bytes) {
+  if (detectDevice().os !== 'android') {
+    return { success: false, message: 'RawBT works on Android only. Choose another print method in Settings.' }
+  }
+  window.location.href = rawbtIntentUrl(bytes)
+  return { success: true, message: 'Sent to RawBT printer app' }
+}
+
+/** ESC/POS bytes for a receipt (used by tests and the RawBT route). */
+export function getReceiptBytes(order, settings = {}) {
+  loadPrinterConfig()
+  return generateReceiptBytes(order, settings)
 }

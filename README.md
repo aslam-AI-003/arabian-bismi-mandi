@@ -40,6 +40,8 @@ first-time setup screen.
    Then run `database/item_profit_update.sql`. It adds admin-only cost
    prices (Menu → Cost prices), saves the cost on each bill line for the
    Reports → Profit tab, and stores the 2 owner WhatsApp numbers.
+   Then run `database/table_optional_update.sql`. It lets Dine In orders be
+   saved without a table number.
 3. Deploy the app (needs Node 20.19+ to build).
 4. Sign in as an admin. The first-time setup screen appears once: check the
    restaurant details. (Table tracking was removed; Dine In uses a table

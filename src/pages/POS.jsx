@@ -96,12 +96,6 @@ export default function POS() {
       toast.error('Cart is empty!')
       return false
     }
-    if (cart.orderType === 'DINE_IN') {
-      if (!cart.tableNumber && !editing) {
-        toast.error('Please enter table number!')
-        return false
-      }
-    }
     if (!online) {
       toast.error(t('offlineBanner'))
       return false
@@ -339,7 +333,7 @@ export default function POS() {
         {/* Table Number (Dine In) */}
         {cart.orderType === 'DINE_IN' && !editing && (
           <div className="mb-3">
-            <label className="text-muted text-sm mb-1 block">{t('tableNumber')} *</label>
+            <label className="text-muted text-sm mb-1 block">{t('tableNumber')} <span className="text-xs">({language === 'ta' ? 'விருப்பம்' : 'optional'})</span></label>
             <input
               type="number"
               value={cart.tableNumber}
