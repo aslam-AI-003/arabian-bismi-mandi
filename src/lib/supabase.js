@@ -566,3 +566,57 @@ export const getOrdersForTab = async (tab, from, to) => {
   data?.forEach((o) => o.order_items?.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)))
   return { data, error }
 }
+
+// ============================================
+// DASHBOARD (paged: Supabase returns at most 1000 rows per request)
+// ============================================
+const PAGE = 1000
+
+async function fetchAllPages(build) {
+  const all = []
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await build().range(from, from + PAGE - 1)
+    if (error) return { data: null, error }
+    all.push(...(data || []))
+    if (!data || data.length < PAGE) return { data: all, error: null }
+  }
+}
+
+/** Orders created in [from, to] with items (for the selected period). */
+export const getDashboardOrders = (from, to) => fetchAllPages(() => supabase
+  .from('orders')
+  .select('id, order_number, order_type, order_status, payment_status, table_number, customer_name, customer_phone, total_amount, paid_amount, refunded_amount, created_at, order_items(menu_item_id, item_name, variant, quantity, total_price)')
+  .gte('created_at', from)
+  .lte('created_at', to)
+  .order('created_at', { ascending: true }))
+
+/** Light rows for the sales trend chart (up to 12 months). */
+export const getTrendOrders = (from, to) => fetchAllPages(() => supabase
+  .from('orders')
+  .select('total_amount, order_status, created_at')
+  .eq('order_status', 'COMPLETED')
+  .gte('created_at', from)
+  .lte('created_at', to)
+  .order('created_at', { ascending: true }))
+
+export const getDashboardPayments = (from, to) => fetchAllPages(() => supabase
+  .from('pos_payments')
+  .select('kind, method, amount, orders(order_status)')
+  .gte('created_at', from)
+  .lte('created_at', to)
+  .order('created_at', { ascending: true }))
+
+/** Number of open orders (not completed / cancelled). */
+export const getOpenOrderCount = async () => {
+  const { count, error } = await supabase
+    .from('orders')
+    .select('id', { count: 'exact', head: true })
+    .in('order_status', ['PENDING', 'PREPARING', 'READY'])
+  return { count: count || 0, error }
+}
+
+/** menu_item_id -> category name, for the category sales chart. */
+export const getMenuCategoryMap = async () => {
+  const { data, error } = await supabase.from('menu_items').select('id, categories(name)')
+  return { data: new Map((data || []).map((m) => [m.id, m.categories?.name || 'Other'])), error }
+}
