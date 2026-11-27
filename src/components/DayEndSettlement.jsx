@@ -21,9 +21,11 @@ const DENOMINATIONS = [
   { value: 0, label: 'Coins' },
 ]
 
-export default function DayEndSettlement() {
+// date: 'yyyy-MM-dd' (local), defaults to today.
+// onSummary: receives the drawer figures so Day Close can print them.
+export default function DayEndSettlement({ date, onSummary }) {
   const { language } = useLanguage()
-  const today = new Date().toISOString().split('T')[0]
+  const today = date || format(new Date(), 'yyyy-MM-dd')
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -46,8 +48,14 @@ export default function DayEndSettlement() {
   })
 
   useEffect(() => {
+    // Clear the form so another day's figures never show under this date
+    setSettlement(null)
+    setOpeningBalance('')
+    setDenominations({})
+    setCoinsAmount('')
+    setNotes('')
     fetchAll()
-  }, [])
+  }, [today])
 
   const fetchAll = async () => {
     setLoading(true)
@@ -56,10 +64,10 @@ export default function DayEndSettlement() {
   }
 
   const fetchSales = async () => {
-    const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0)
-    const dayEnd = new Date(); dayEnd.setHours(23, 59, 59, 999)
+    const dayStart = new Date(`${today}T00:00:00`)
+    const dayEnd = new Date(`${today}T23:59:59.999`)
     const [{ data }, { data: ledger }] = await Promise.all([
-      getDailySales(new Date()),
+      getDailySales(dayStart),
       getPaymentsByDateRange(dayStart.toISOString(), dayEnd.toISOString()),
     ])
     if (data) {
@@ -110,6 +118,10 @@ export default function DayEndSettlement() {
   
   const difference = countedCash - expectedCash
   const isClosed = settlement?.status === 'CLOSED'
+
+  useEffect(() => {
+    onSummary?.({ opening, cashSales: salesData.cashSales, cashOutTotal, cashOuts, expectedCash, countedCash, difference, isClosed })
+  }, [opening, salesData.cashSales, cashOutTotal, cashOuts, expectedCash, countedCash, difference, isClosed])
 
   // Handlers
   const handleDenominationChange = (value, count) => {
@@ -179,7 +191,9 @@ export default function DayEndSettlement() {
     title: language === 'ta' ? '💰 நாள் முடிவு கணக்கு' : '💰 Day End Settlement',
     openingBalance: language === 'ta' ? '🌅 தொடக்க இருப்பு' : '🌅 Opening Balance',
     openingHint: language === 'ta' ? 'இன்று காலை டிராயரில் எவ்வளவு பணம் வைத்தீர்கள்?' : 'How much cash did you put in the drawer this morning?',
-    todaySales: language === 'ta' ? '📊 இன்றைய விற்பனை (POS இலிருந்து)' : "📊 Today's Sales (Auto from POS)",
+    todaySales: today === format(new Date(), 'yyyy-MM-dd')
+      ? (language === 'ta' ? '📊 இன்றைய விற்பனை (POS இலிருந்து)' : "📊 Today's Sales (Auto from POS)")
+      : (language === 'ta' ? '📊 அன்றைய விற்பனை (POS இலிருந்து)' : '📊 Sales on this day (Auto from POS)'),
     cashOut: language === 'ta' ? '💸 பணம் எடுத்தது (டிராயரிலிருந்து)' : '💸 Cash Out (From Drawer)',
     cashOutHint: language === 'ta' ? 'டிராயரிலிருந்து எடுத்த பணம் (செலவு, உரிமையாளர் எடுத்தது)' : 'Money taken out from drawer (expenses, owner withdrawal)',
     reason: language === 'ta' ? 'காரணம்' : 'Reason',
@@ -217,7 +231,7 @@ export default function DayEndSettlement() {
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-cream">{l.title}</h2>
         <div className="flex items-center gap-2">
-          <span className="text-muted text-sm">{format(new Date(), 'dd MMM yyyy')}</span>
+          <span className="text-muted text-sm">{format(new Date(`${today}T00:00:00`), 'dd MMM yyyy')}</span>
           {isClosed && (
             <span className="flex items-center gap-1 px-3 py-1 rounded-full bg-green-500/20 text-green-400 text-xs font-bold">
               <Lock size={12} /> {l.closed}

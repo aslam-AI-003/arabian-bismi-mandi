@@ -620,3 +620,30 @@ export const getMenuCategoryMap = async () => {
   const { data, error } = await supabase.from('menu_items').select('id, categories(name)')
   return { data: new Map((data || []).map((m) => [m.id, m.categories?.name || 'Other'])), error }
 }
+
+// ============================================
+// REPORTS (paged)
+// ============================================
+export const getReportOrders = (from, to) => fetchAllPages(() => supabase
+  .from('orders')
+  .select('id, order_number, order_type, order_status, payment_status, payment_method, table_number, customer_name, customer_phone, subtotal, discount_type, discount_value, discount_amount, parcel_charge, round_off, total_amount, paid_amount, refunded_amount, cancel_reason, created_by_name, created_at, order_items(menu_item_id, item_name, variant, quantity, total_price)')
+  .gte('created_at', from)
+  .lte('created_at', to)
+  .order('created_at', { ascending: true }))
+
+export const getReportPayments = (from, to) => fetchAllPages(() => supabase
+  .from('pos_payments')
+  .select('kind, method, amount, reference, reason, created_by_name, created_at, orders(order_number, order_status)')
+  .gte('created_at', from)
+  .lte('created_at', to)
+  .order('created_at', { ascending: true }))
+
+/** Light rows for the "vs previous period" comparison. */
+export const getCompareData = async (from, to, fromDate, toDate) => {
+  const [o, p, e] = await Promise.all([
+    fetchAllPages(() => supabase.from('orders').select('order_status, total_amount').gte('created_at', from).lte('created_at', to).order('created_at')),
+    fetchAllPages(() => supabase.from('pos_payments').select('kind, amount, orders(order_status)').eq('kind', 'REFUND').gte('created_at', from).lte('created_at', to).order('created_at')),
+    getExpenses(fromDate, toDate),
+  ])
+  return { data: { orders: o.data || [], ledger: p.data || [], expenses: e.data || [] }, error: o.error || p.error || e.error }
+}
