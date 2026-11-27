@@ -243,3 +243,14 @@ body {
   background: linear-gradient(90deg, transparent, #D4A44C, transparent);
   margin: 0.5rem auto;
 }
+
+/* Number boxes: no up/down arrows; the user types the exact value. */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

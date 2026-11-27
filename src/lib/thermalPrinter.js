@@ -14,6 +14,18 @@ import { receiptExtras, unitLine } from './billing'
 // Bluetooth thermal printers (the ones sold for mobile billing/POS use).
 const BLE_PRINTER_SERVICE_UUID = '000018f0-0000-1000-8000-00805f9b34fb'
 const BLE_PRINTER_CHARACTERISTIC_UUID = '00002af1-0000-1000-8000-00805f9b34fb'
+// Services used by common BLE thermal printers (different brands use
+// different ones). Web Bluetooth only lets us talk to services listed here.
+const BLE_PRINTER_SERVICES = [
+  BLE_PRINTER_SERVICE_UUID,
+  '0000ff00-0000-1000-8000-00805f9b34fb',
+  '0000ffe0-0000-1000-8000-00805f9b34fb',
+  '0000fee7-0000-1000-8000-00805f9b34fb',
+  '0000ae30-0000-1000-8000-00805f9b34fb',
+  '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+  'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
+]
+const SAVED_PRINTER_KEY = 'bismiBluetoothPrinter' // { id, name } of the last printer
 const BLE_WRITE_CHUNK_SIZE = 180 // bytes per BLE write (safe for most printers)
 
 // ============================================
@@ -183,45 +195,100 @@ export function isBluetoothSupported() {
 /**
  * Connect to thermal printer via Bluetooth (BLE)
  */
+// Find a characteristic we can write print data to.
+async function findWritableCharacteristic(server) {
+  try {
+    const known = await server.getPrimaryService(BLE_PRINTER_SERVICE_UUID)
+    return await known.getCharacteristic(BLE_PRINTER_CHARACTERISTIC_UUID)
+  } catch { /* not this printer type; search below */ }
+  const services = await server.getPrimaryServices()
+  for (const service of services) {
+    let chars = []
+    try { chars = await service.getCharacteristics() } catch { continue }
+    const c = chars.find((ch) => ch.properties.writeWithoutResponse || ch.properties.write)
+    if (c) return c
+  }
+  throw new Error('This printer has no print channel the browser can use.')
+}
+
+async function attachBluetoothDevice(device) {
+  device.addEventListener('gattserverdisconnected', () => {
+    isConnected = false
+    connectionType = null
+    bleCharacteristic = null
+    notifyPrinterStatusChange()
+  })
+  const server = await device.gatt.connect()
+  bleCharacteristic = await findWritableCharacteristic(server)
+  bleDevice = device
+  isConnected = true
+  connectionType = 'bluetooth'
+  savePrinterConfig({ mode: 'bluetooth' })
+  try { localStorage.setItem(SAVED_PRINTER_KEY, JSON.stringify({ id: device.id, name: device.name || '' })) } catch { /* ignore */ }
+  notifyPrinterStatusChange()
+}
+
+/** Name of the last connected Bluetooth printer ('' if none). */
+export function getSavedPrinterName() {
+  try { return JSON.parse(localStorage.getItem(SAVED_PRINTER_KEY) || '{}').name || '' } catch { return '' }
+}
+
+/** Connected printer name, or ''. */
+export function getConnectedPrinterName() {
+  return isPrinterConnected() ? (bleDevice?.name || 'Bluetooth printer') : ''
+}
+
+/**
+ * Pick and connect a Bluetooth printer. Must be called from a button tap
+ * (the browser only shows its device list after a user action).
+ */
 export async function connectPrinterBluetooth() {
   if (!isBluetoothSupported()) {
-    throw new Error('Web Bluetooth is not supported in this browser. Use Chrome on Android/Desktop.')
+    return { success: false, message: 'Bluetooth printing needs Google Chrome on an Android phone/tablet or a Windows/Mac computer.' }
   }
-
   try {
-    // Browser will show a device picker dialog with nearby Bluetooth devices
-    bleDevice = await navigator.bluetooth.requestDevice({
+    const device = await navigator.bluetooth.requestDevice({
       acceptAllDevices: true,
-      optionalServices: [BLE_PRINTER_SERVICE_UUID],
+      optionalServices: BLE_PRINTER_SERVICES,
     })
-
-    bleDevice.addEventListener('gattserverdisconnected', () => {
-      isConnected = false
-      connectionType = null
-      bleDevice = null
-      bleCharacteristic = null
-      notifyPrinterStatusChange()
-    })
-
-    const server = await bleDevice.gatt.connect()
-    const service = await server.getPrimaryService(BLE_PRINTER_SERVICE_UUID)
-    bleCharacteristic = await service.getCharacteristic(BLE_PRINTER_CHARACTERISTIC_UUID)
-
-    isConnected = true
-    connectionType = 'bluetooth'
-
-    savePrinterConfig({ mode: 'bluetooth' })
-    notifyPrinterStatusChange()
-
-    return { success: true, message: `Connected to ${bleDevice.name || 'Bluetooth printer'}!` }
+    await attachBluetoothDevice(device)
+    return { success: true, message: `Connected to ${device.name || 'Bluetooth printer'}!` }
   } catch (error) {
     isConnected = false
     connectionType = null
+    notifyPrinterStatusChange()
     if (error.name === 'NotFoundError') {
-      return { success: false, message: 'No printer selected. Please try again.' }
+      return { success: false, message: 'No printer selected. Turn the printer on and try again.' }
     }
     return { success: false, message: `Bluetooth connection failed: ${error.message}` }
   }
+}
+
+/**
+ * Reconnect the last printer without asking (works in Chrome versions that
+ * remember Bluetooth permissions). Returns true when connected.
+ */
+let reconnecting = null
+export async function reconnectBluetoothPrinter() {
+  if (isPrinterConnected()) return true
+  if (!isBluetoothSupported() || typeof navigator.bluetooth.getDevices !== 'function') return false
+  if (reconnecting) return reconnecting
+  reconnecting = (async () => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(SAVED_PRINTER_KEY) || 'null')
+      if (!saved?.id) return false
+      const devices = await navigator.bluetooth.getDevices()
+      const device = devices.find((d) => d.id === saved.id)
+      if (!device) return false
+      await attachBluetoothDevice(device)
+      return true
+    } catch {
+      return false
+    } finally {
+      reconnecting = null
+    }
+  })()
+  return reconnecting
 }
 
 /**
@@ -231,7 +298,11 @@ async function sendBytesBluetooth(bytes) {
   if (!bleCharacteristic) throw new Error('Printer not connected')
   for (let i = 0; i < bytes.length; i += BLE_WRITE_CHUNK_SIZE) {
     const chunk = bytes.slice(i, i + BLE_WRITE_CHUNK_SIZE)
-    await bleCharacteristic.writeValue(chunk)
+    if (bleCharacteristic.properties?.writeWithoutResponse && bleCharacteristic.writeValueWithoutResponse) {
+      await bleCharacteristic.writeValueWithoutResponse(chunk)
+    } else {
+      await bleCharacteristic.writeValue(chunk)
+    }
   }
 }
 
@@ -682,15 +753,13 @@ export function printReceiptSilent(order, settings = {}) {
  * Main print function - auto-selects the best method
  */
 export async function printReceipt(order, settings = {}) {
-  const config = loadPrinterConfig()
-
-  if (config.mode === 'serial' && isPrinterConnected()) {
-    return await printReceiptSerial(order, settings)
-  } else if (config.mode === 'bluetooth' && isPrinterConnected()) {
-    return await printReceiptBluetooth(order, settings)
-  } else {
-    return printReceiptSilent(order, settings)
+  loadPrinterConfig()
+  // Bluetooth printer only. Try to reconnect the last printer first.
+  if (!isPrinterConnected()) await reconnectBluetoothPrinter()
+  if (!isPrinterConnected()) {
+    return { success: false, needsConnect: true, message: 'Bluetooth printer not connected.' }
   }
+  return await printReceiptBluetooth(order, settings)
 }
 
 /**

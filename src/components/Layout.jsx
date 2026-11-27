@@ -14,7 +14,6 @@ import {
   Calculator,
   Wifi,
   WifiOff,
-  Usb,
   Bluetooth,
   Printer as PrinterIcon,
   Receipt,
@@ -23,7 +22,7 @@ import {
 import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
 import { useLanguage } from '../context/LanguageContext'
-import { isPrinterConnected, getPrinterConnectionType, onPrinterStatusChange } from '../lib/thermalPrinter'
+import { isPrinterConnected, getPrinterConnectionType, onPrinterStatusChange, connectPrinterBluetooth, reconnectBluetoothPrinter, getConnectedPrinterName } from '../lib/thermalPrinter'
 import { signOut } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useConnection } from '../context/ConnectionContext'
@@ -39,6 +38,7 @@ function useOnlineStatus() {
 function usePrinterStatus() {
   const [status, setStatus] = useState({ connected: isPrinterConnected(), type: getPrinterConnectionType() })
   useEffect(() => {
+    reconnectBluetoothPrinter()
     return onPrinterStatusChange(({ connected, type }) => setStatus({ connected, type }))
   }, [])
   return status
@@ -61,22 +61,25 @@ function StatusBadges() {
         <span className="hidden sm:inline">{online ? 'Online' : 'Offline'}</span>
       </span>
 
-      {/* Printer status */}
-      <span
-        title={printer.connected ? `Printer connected (${printer.type === 'bluetooth' ? 'Bluetooth' : 'USB'})` : 'Printer not connected'}
+      {/* Bluetooth printer status: tap to connect */}
+      <button
+        type="button"
+        onClick={async () => {
+          if (printer.connected) return
+          const r = await connectPrinterBluetooth()
+          if (r.success) toast.success(r.message)
+          else toast.error(r.message)
+        }}
+        title={printer.connected ? `Printer connected: ${getConnectedPrinterName()}` : 'Tap to connect the Bluetooth printer'}
         className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-          printer.connected ? 'bg-green-500/15 text-green-400' : 'bg-muted/15 text-muted'
+          printer.connected ? 'bg-green-500/15 text-green-400 cursor-default' : 'bg-muted/15 text-muted hover:text-cream'
         }`}
       >
-        {printer.connected ? (
-          printer.type === 'bluetooth' ? <Bluetooth size={14} /> : <Usb size={14} />
-        ) : (
-          <PrinterIcon size={14} />
-        )}
+        {printer.connected ? <Bluetooth size={14} /> : <PrinterIcon size={14} />}
         <span className="hidden sm:inline">
-          {printer.connected ? 'Printer Connected' : 'Printer Offline'}
+          {printer.connected ? 'Printer Connected' : 'Connect Printer'}
         </span>
-      </span>
+      </button>
     </div>
   )
 }

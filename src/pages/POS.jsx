@@ -122,14 +122,16 @@ export default function POS() {
     // Auto-print if enabled in settings
     const config = loadPrinterConfig()
     if (config.autoPrint) {
+      let printed = false
       try {
         const result = await printReceipt(completeOrder, settings)
-        if (result.success) {
-          toast.success('🖨️ Receipt printed automatically!')
-        }
+        printed = result.success
+        if (printed) toast.success('🖨️ Receipt printed automatically!')
       } catch (printError) {
         console.error('Auto-print error:', printError)
       }
+      // Printer not connected: show the receipt so the cashier can tap "Connect & Print"
+      if (!printed) setShowReceipt(true)
     } else {
       // Show receipt modal for manual print
       setShowReceipt(true)

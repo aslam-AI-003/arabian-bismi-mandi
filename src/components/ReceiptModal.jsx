@@ -1,78 +1,62 @@
 import { useRef, useState, useEffect } from 'react'
-import { X, Printer, Download, MessageCircle, Share2, Usb, Wifi, WifiOff } from 'lucide-react'
+import { X, Printer, Download, MessageCircle, Share2, Bluetooth, BluetoothOff, Loader2 } from 'lucide-react'
 import { format } from 'date-fns'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import toast from 'react-hot-toast'
 import bismiLogo from '../assets/Bismi_Logo.jpg'
-import { 
-  printReceipt, 
-  printReceiptSilent, 
-  printReceiptSerial, 
-  isPrinterConnected, 
-  loadPrinterConfig 
+import {
+  printReceipt,
+  printReceiptSilent,
+  isPrinterConnected,
+  connectPrinterBluetooth,
+  onPrinterStatusChange,
+  reconnectBluetoothPrinter,
 } from '../lib/thermalPrinter'
 import { receiptExtras, unitLine } from '../lib/billing'
 
 export default function ReceiptModal({ order, onClose, settings = {} }) {
   const receiptRef = useRef(null)
   const [generating, setGenerating] = useState(false)
-  const [printerConnected, setPrinterConnected] = useState(false)
-  const [printerMode, setPrinterMode] = useState('silent')
+  const [printerConnected, setPrinterConnected] = useState(isPrinterConnected())
+  const [printing, setPrinting] = useState(false)
 
   const restaurantName = settings.restaurant_name || 'Arabian Bismi Mandi Restaurant'
   const restaurantAddress = settings.restaurant_address || 'Near Kovilady Bus Stand, Main Road, Chakkarapalli'
   const restaurantPhone = settings.restaurant_phone || '9894092449 | 9025499668'
 
   useEffect(() => {
-    const config = loadPrinterConfig()
-    setPrinterMode(config.mode)
-    setPrinterConnected(isPrinterConnected())
+    reconnectBluetoothPrinter()
+    return onPrinterStatusChange(({ connected }) => setPrinterConnected(connected))
   }, [])
 
   if (!order) return null
   const extras = receiptExtras(order)
 
-  // Thermal Print (Auto-selects best method)
+  // Bluetooth printer only. Not connected -> this tap opens the printer list
+  // (the browser needs a tap to do that), then prints.
   const handleThermalPrint = async () => {
+    setPrinting(true)
     try {
-      const result = await printReceipt(order, settings)
-      if (result.success) {
-        toast.success(result.message)
-      } else {
-        toast.error(result.message)
+      let result = await printReceipt(order, settings)
+      if (result.needsConnect) {
+        const c = await connectPrinterBluetooth()
+        if (!c.success) { toast.error(c.message); return }
+        result = await printReceipt(order, settings)
       }
+      if (result.success) toast.success(result.message)
+      else toast.error(result.message)
     } catch (error) {
       toast.error(error.message || 'Print failed')
+    } finally {
+      setPrinting(false)
     }
   }
 
-  // Silent Print (Browser default printer)
+  // Backup only: browser print dialog (e.g. via a phone print app)
   const handleSilentPrint = () => {
     const result = printReceiptSilent(order, settings)
-    if (result.success) {
-      toast.success(result.message)
-    } else {
-      toast.error(result.message)
-    }
-  }
-
-  // Direct ESC/POS Print (USB connected)
-  const handleDirectPrint = async () => {
-    if (!isPrinterConnected()) {
-      toast.error('USB Printer not connected. Go to Settings → Printer to connect.')
-      return
-    }
-    try {
-      const result = await printReceiptSerial(order, settings)
-      if (result.success) {
-        toast.success(result.message)
-      } else {
-        toast.error(result.message)
-      }
-    } catch (error) {
-      toast.error(error.message || 'Direct print failed')
-    }
+    if (!result.success) toast.error(result.message)
   }
 
   // Download as PDF
@@ -243,12 +227,12 @@ _"Good Food Brings People Together"_
             <h2 className="text-lg font-bold text-cream">Receipt</h2>
             {/* Printer Status Badge */}
             <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${
-              printerConnected 
-                ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+              printerConnected
+                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
                 : 'bg-muted/20 text-muted border border-muted/30'
             }`}>
-              {printerConnected ? <Wifi size={10} /> : <WifiOff size={10} />}
-              {printerConnected ? 'USB' : 'Browser'}
+              {printerConnected ? <Bluetooth size={10} /> : <BluetoothOff size={10} />}
+              {printerConnected ? 'Printer ready' : 'Printer not connected'}
             </div>
           </div>
           <button 
@@ -395,38 +379,18 @@ _"Good Food Brings People Together"_
 
         {/* Action Buttons */}
         <div className="p-4 border-t border-brand-gold/20 space-y-3">
-          {/* Primary Print Button - Thermal */}
+          {/* Primary: Bluetooth printer */}
           <button
             onClick={handleThermalPrint}
-            disabled={generating}
-            className="w-full flex items-center justify-center gap-2 p-3 rounded-lg bg-brand-gold text-dark-primary font-bold text-sm hover:bg-brand-gold-light transition-all shadow-gold"
+            disabled={generating || printing}
+            className="w-full flex items-center justify-center gap-2 p-3 rounded-lg bg-brand-gold text-dark-primary font-bold text-sm hover:bg-brand-gold-light transition-all shadow-gold disabled:opacity-60"
           >
-            <Printer size={20} />
-            🖨️ Print Receipt
-            {printerConnected && <span className="text-xs opacity-70">(USB Direct)</span>}
+            {printing ? <Loader2 size={20} className="animate-spin" /> : printerConnected ? <Printer size={20} /> : <Bluetooth size={20} />}
+            {printerConnected ? 'Print Receipt' : 'Connect & Print'}
           </button>
 
           {/* Secondary Actions */}
-          <div className="grid grid-cols-3 gap-2">
-            {/* USB Direct Print (if connected) */}
-            {printerConnected && (
-              <button
-                onClick={handleDirectPrint}
-                disabled={generating}
-                className="flex flex-col items-center gap-1 p-2.5 rounded-lg bg-green-600 hover:bg-green-500 text-white transition-all"
-              >
-                <Usb size={18} />
-                <span className="text-[10px]">USB Print</span>
-              </button>
-            )}
-            <button
-              onClick={handleSilentPrint}
-              disabled={generating}
-              className="flex flex-col items-center gap-1 p-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-all"
-            >
-              <Printer size={18} />
-              <span className="text-[10px]">Browser</span>
-            </button>
+          <div className="grid grid-cols-2 gap-2">
             <button
               onClick={handleDownloadPDF}
               disabled={generating}
@@ -444,6 +408,9 @@ _"Good Food Brings People Together"_
               <span className="text-[10px]">WhatsApp</span>
             </button>
           </div>
+          <button type="button" onClick={handleSilentPrint} className="w-full text-center text-muted text-[11px] underline hover:text-cream">
+            Bluetooth not working? Print using the phone's print option
+          </button>
 
           {/* Native Share (Mobile) */}
           {'share' in navigator && (
